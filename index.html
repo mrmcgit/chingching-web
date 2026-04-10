@@ -61,10 +61,11 @@
   .header {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
   }
-  .header-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
   .logo { width: 36px; height: 36px; border-radius: 8px; }
   .wallet-title {
     font-size: 14px;
@@ -82,7 +83,9 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: center;
   }
   .total-section { text-align: center; margin: 16px 0 12px; }
   .total-value {
@@ -259,14 +262,58 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/js-sha3@0.9.3/src/sha3.min.js"></script>
 <script>
 const PULSESCAN_API = 'https://api.scan.pulsechain.com/api/';
 const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/pulsechain/';
 const PULSEX_SUBGRAPH = 'https://graph.pulsechain.com/subgraphs/name/pulsechain/pulsexv2';
+const PULSECHAIN_RPC = 'https://rpc.pulsechain.com';
+const PNS_REGISTRY = '0xbd5133993FCDED5945c5539D9f032261F0d13170';
 const NATIVE_PLS = 'native_pls';
 const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
+
+function hexToBytes(hex) {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) bytes[i/2] = parseInt(hex.substr(i, 2), 16);
+  return bytes;
+}
+
+function namehash(name) {
+  let node = '0000000000000000000000000000000000000000000000000000000000000000';
+  if (!name) return node;
+  const labels = name.split('.');
+  for (let i = labels.length - 1; i >= 0; i--) {
+    const labelHash = keccak_256(labels[i]); // hex string from js-sha3
+    node = keccak_256(hexToBytes(node + labelHash));
+  }
+  return node;
+}
+
+async function rpcCall(to, data) {
+  const res = await fetch(PULSECHAIN_RPC, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to, data }, 'latest'], id: 1 })
+  });
+  const json = await res.json();
+  return json.result;
+}
+
+/// Resolve a .pls name to an 0x address via PulseChain Name Service
+async function resolvePLSName(name) {
+  const nodeHex = namehash(name);
+  // 1. Get resolver from PNS registry: resolver(bytes32)
+  const resolverResult = await rpcCall(PNS_REGISTRY, '0x0178b8bf' + nodeHex);
+  const resolverAddr = '0x' + resolverResult.slice(26, 66);
+  if (resolverAddr === '0x0000000000000000000000000000000000000000') return null;
+  // 2. Get address from resolver: addr(bytes32)
+  const addrResult = await rpcCall(resolverAddr, '0x3b3b57de' + nodeHex);
+  const addr = '0x' + addrResult.slice(26, 66);
+  if (addr === '0x0000000000000000000000000000000000000000') return null;
+  return addr;
+}
 
 let currentTokens = [];
 let currentTotal = 0;
@@ -552,15 +599,35 @@ async function loadWallet(addressOverride) {
   let address = addressOverride || document.getElementById('addrInput')?.value?.trim();
   if (!address) return;
 
+  const params = new URLSearchParams(window.location.search);
+  let displayName = params.get('name') || '';
+
+  // Resolve .pls names to addresses
+  if (address.endsWith('.pls')) {
+    displayName = displayName || address;
+    document.getElementById('walletTitle').textContent = displayName;
+    document.getElementById('walletSubtitle').textContent = 'Resolving...';
+    renderLoading();
+    try {
+      const resolved = await resolvePLSName(address);
+      if (!resolved) {
+        renderError('Could not resolve "' + address + '". Check the name and try again.');
+        return;
+      }
+      address = resolved;
+    } catch (e) {
+      renderError('Failed to resolve .pls name.');
+      return;
+    }
+  }
+
   const url = new URL(window.location);
   url.searchParams.set('wallet', address);
+  if (displayName) url.searchParams.set('name', displayName);
   history.replaceState({}, '', url);
 
-  // Set title from name param or short address
-  const params = new URLSearchParams(window.location.search);
-  const nameParam = params.get('name');
-  document.getElementById('walletTitle').textContent = nameParam || shortAddr(address);
-  document.getElementById('walletSubtitle').textContent = nameParam ? shortAddr(address) : 'PulseChain Portfolio';
+  document.getElementById('walletTitle').textContent = displayName || shortAddr(address);
+  document.getElementById('walletSubtitle').textContent = displayName ? shortAddr(address) : 'PulseChain Portfolio';
   renderLoading();
 
   try {
