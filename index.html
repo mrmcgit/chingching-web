@@ -392,10 +392,10 @@ function renderCard(address, total, tokens) {
   content.innerHTML = `
     <div class="total-section">
       <div class="total-value">${formatUSD(total)}</div>
+      <div id="totalDiff" class="total-diff ${diffClass}">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
       <div style="margin-top:2px">
         <span id="totalChange" class="change-value ${changeClass}">${arrow} ${formatPct(change)}</span>
       </div>
-      <div id="totalDiff" class="total-diff ${diffClass}">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
     </div>
     <div class="divider"></div>
     <div class="tokens-list">${tokenRows}</div>
