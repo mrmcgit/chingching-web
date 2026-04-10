@@ -64,18 +64,23 @@
     -webkit-text-fill-color: transparent;
   }
   .total-diff {
-    font-size: 36px;
+    text-align: center;
+    font-size: 40px;
     font-weight: 700;
     letter-spacing: -1px;
-    opacity: 0.35;
+    margin-top: 4px;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.15s;
   }
+  .total-diff:active { opacity: 0.6; }
   .total-diff.up { color: #34c759; }
   .total-diff.down { color: #ff3b30; }
   .total-diff.flat { color: #999; }
   .period-pill {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 10px;
     font-weight: 600;
     cursor: pointer;
     border: 1px solid rgba(255,255,255,0.08);
@@ -87,10 +92,11 @@
   .period-pill:hover { border-color: rgba(255,255,255,0.15); color: #aaa; }
   .period-pill.active { border-color: rgba(106,90,205,0.4); background: rgba(106,90,205,0.12); color: #b0a0ff; }
   .change-value {
-    display: inline-block;
-    font-size: 14px;
-    font-weight: 700;
-    margin-left: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 13px;
+    font-weight: 600;
   }
   .change-value.up { color: #34c759; }
   .change-value.down { color: #ff3b30; }
@@ -231,9 +237,10 @@ const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
 
-let currentTokens = []; // stored for period switching
+let currentTokens = [];
 let currentTotal = 0;
 let currentPeriod = 'h24';
+let showAbsolute = true; // toggle between absolute ($) and percentage (%)
 
 function shortAddr(addr) {
   return addr.slice(0, 6) + '...' + addr.slice(-4);
@@ -315,29 +322,35 @@ function weightedChange(tokens, total, period) {
   return change;
 }
 
+function toggleDiffMode() {
+  showAbsolute = !showAbsolute;
+  updateDiffDisplay();
+}
+
+function updateDiffDisplay() {
+  const diffEl = document.getElementById('totalDiff');
+  if (!diffEl) return;
+  const change = weightedChange(currentTokens, currentTotal, currentPeriod);
+  const absDiff = currentTotal * (change / (100 + change));
+  const cls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
+  diffEl.className = 'total-diff ' + cls;
+  if (showAbsolute) {
+    const sign = absDiff >= 0 ? '+' : '';
+    diffEl.textContent = sign + formatUSD(Math.abs(absDiff));
+  } else {
+    const arrow = change > 0.1 ? '\u25B2 ' : change < -0.1 ? '\u25BC ' : '';
+    diffEl.textContent = arrow + formatPct(change);
+  }
+}
+
 function setPeriod(period) {
   currentPeriod = period;
   // Update pill states
   document.querySelectorAll('.period-pill').forEach(p => {
     p.classList.toggle('active', p.dataset.period === period);
   });
-  // Update total change + absolute diff
-  const change = weightedChange(currentTokens, currentTotal, period);
-  const changeEl = document.getElementById('totalChange');
-  if (changeEl) {
-    const cls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
-    const arrow = change > 0.1 ? '\u25B2' : change < -0.1 ? '\u25BC' : '';
-    changeEl.className = 'change-value ' + cls;
-    changeEl.textContent = arrow + ' ' + formatPct(change);
-  }
-  const diffEl = document.getElementById('totalDiff');
-  if (diffEl) {
-    const absDiff = currentTotal * (change / (100 + change));
-    const diffSign = absDiff >= 0 ? '+' : '';
-    const diffCls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
-    diffEl.className = 'total-diff ' + diffCls;
-    diffEl.textContent = diffSign + formatUSD(Math.abs(absDiff));
-  }
+  // Update total diff display
+  updateDiffDisplay();
   // Update per-token changes
   document.querySelectorAll('.token-change[data-addr]').forEach(el => {
     const token = currentTokens.find(t => t.address === el.dataset.addr);
@@ -392,10 +405,7 @@ function renderCard(address, total, tokens) {
   content.innerHTML = `
     <div class="total-section">
       <div class="total-value">${formatUSD(total)}</div>
-      <div id="totalDiff" class="total-diff ${diffClass}">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
-      <div style="margin-top:2px">
-        <span id="totalChange" class="change-value ${changeClass}">${arrow} ${formatPct(change)}</span>
-      </div>
+      <div id="totalDiff" class="total-diff ${diffClass}" onclick="toggleDiffMode()">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
     </div>
     <div class="divider"></div>
     <div class="tokens-list">${tokenRows}</div>
