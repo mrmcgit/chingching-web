@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ching Ching - PulseChain Portfolio</title>
+<meta name="description" content="View a PulseChain wallet portfolio">
+<meta property="og:title" content="Ching Ching - PulseChain Portfolio">
+<meta property="og:description" content="View token holdings, prices, and portfolio value">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    background: #0a0a0f;
+    color: #e8e8e8;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: linear-gradient(145deg, #141420 0%, #0d0d18 50%, #12101e 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 28px 24px;
+    width: 100%;
+    max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(100,50,200,0.05);
+  }
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .header-left { display: flex; align-items: center; gap: 12px; flex: 1; }
+  .logo { width: 36px; height: 36px; border-radius: 8px; }
+  .wallet-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8e8e8;
+    letter-spacing: -0.3px;
+  }
+  .wallet-subtitle {
+    font-size: 11px;
+    color: #555;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    margin-top: 2px;
+  }
+  .period-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .total-section { text-align: center; margin: 16px 0 12px; }
+  .total-value {
+    font-size: 56px;
+    font-weight: 800;
+    letter-spacing: -2px;
+    background: linear-gradient(135deg, #fff 0%, #c0c0c0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .total-diff {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    opacity: 0.35;
+  }
+  .total-diff.up { color: #34c759; }
+  .total-diff.down { color: #ff3b30; }
+  .total-diff.flat { color: #999; }
+  .period-pill {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03);
+    color: #777;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .period-pill:hover { border-color: rgba(255,255,255,0.15); color: #aaa; }
+  .period-pill.active { border-color: rgba(106,90,205,0.4); background: rgba(106,90,205,0.12); color: #b0a0ff; }
+  .change-value {
+    display: inline-block;
+    font-size: 14px;
+    font-weight: 700;
+    margin-left: 4px;
+  }
+  .change-value.up { color: #34c759; }
+  .change-value.down { color: #ff3b30; }
+  .change-value.flat { color: #999; }
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+    margin: 16px 0;
+  }
+  .tokens-list { display: flex; flex-direction: column; gap: 10px; }
+  .token-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .token-left { display: flex; align-items: center; gap: 10px; }
+  .token-icon {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #888;
+    overflow: hidden;
+  }
+  .token-icon img { width: 100%; height: 100%; object-fit: cover; }
+  .token-symbol { font-size: 14px; font-weight: 600; }
+  .token-right { text-align: right; }
+  .token-value { font-size: 14px; font-weight: 600; }
+  .token-change { font-size: 11px; font-weight: 500; }
+  .token-change.up { color: #34c759; }
+  .token-change.down { color: #ff3b30; }
+  .footer {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .timestamp { font-size: 11px; color: #444; }
+  .app-link {
+    font-size: 12px;
+    color: #6a5acd;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s;
+  }
+  .app-link:hover { color: #8a7aed; }
+  .loading {
+    text-align: center;
+    padding: 60px 20px;
+    color: #555;
+    font-size: 14px;
+  }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid rgba(255,255,255,0.08);
+    border-top-color: #6a5acd;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { text-align: center; color: #ff3b30; padding: 40px 20px; font-size: 14px; }
+  .input-section { text-align: center; padding: 20px 0; }
+  .input-section input {
+    width: 100%;
+    padding: 12px 16px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.04);
+    color: #e8e8e8;
+    font-size: 14px;
+    font-family: 'SF Mono', 'Menlo', monospace;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-section input:focus { border-color: rgba(106,90,205,0.5); }
+  .input-section input::placeholder { color: #444; }
+  .input-section button {
+    margin-top: 12px;
+    padding: 10px 24px;
+    border-radius: 10px;
+    border: none;
+    background: linear-gradient(135deg, #6a5acd, #8a7aed);
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .input-section button:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+
+<div class="card" id="card">
+  <div class="header">
+    <div class="header-left">
+      <svg class="logo" viewBox="0 0 271 271" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g1" x1="272" y1="1" x2="1" y2="271" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#00eaff"/><stop offset=".25" stop-color="#0080ff"/>
+            <stop offset=".5" stop-color="#8000ff"/><stop offset=".76" stop-color="#e619e6"/>
+            <stop offset="1" stop-color="#f00"/>
+          </linearGradient>
+        </defs>
+        <path d="M209 29l54 95c4 6 4 17 0 23l-54 95c-4 6-13 12-20 12H81c-7 0-16-6-20-12L7 147c-4-6-4-17 0-23L61 29c4-6 13-12 20-12h108c7 0 16 6 20 12z" fill="url(#g1)" stroke="#bcbcbc" stroke-width=".4"/>
+        <text x="135" y="152" text-anchor="middle" font-size="130" font-weight="800" fill="#d1e6e8" font-family="-apple-system,sans-serif">C</text>
+      </svg>
+      <div>
+        <div class="wallet-title" id="walletTitle"></div>
+        <div class="wallet-subtitle" id="walletSubtitle"></div>
+      </div>
+    </div>
+    <div class="period-row" id="periodPills" style="display:none">
+      <span class="period-pill" data-period="h1" onclick="setPeriod('h1')">1h</span>
+      <span class="period-pill" data-period="h6" onclick="setPeriod('h6')">6h</span>
+      <span class="period-pill active" data-period="h24" onclick="setPeriod('h24')">24h</span>
+    </div>
+  </div>
+  <div id="content">
+    <div class="loading">
+      <div class="spinner"></div>
+      Enter a PulseChain wallet address
+    </div>
+    <div class="input-section" id="inputSection">
+      <input type="text" id="addrInput" placeholder="0x... or .pls name" spellcheck="false"
+             onkeydown="if(event.key==='Enter')loadWallet()">
+      <br>
+      <button onclick="loadWallet()">View Portfolio</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PULSESCAN_API = 'https://api.scan.pulsechain.com/api/';
+const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/pulsechain/';
+const NATIVE_PLS = 'native_pls';
+const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
+const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
+const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
+
+let currentTokens = []; // stored for period switching
+let currentTotal = 0;
+let currentPeriod = 'h24';
+
+function shortAddr(addr) {
+  return addr.slice(0, 6) + '...' + addr.slice(-4);
+}
+
+function formatUSD(n) {
+  if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
+  if (n >= 1000) return '$' + Math.round(n).toLocaleString('en-US');
+  if (n >= 1) return '$' + n.toFixed(2);
+  if (n >= 0.01) return '$' + n.toFixed(3);
+  return '$' + n.toFixed(6);
+}
+
+function formatPct(n) {
+  const sign = n >= 0 ? '+' : '';
+  return sign + n.toFixed(1) + '%';
+}
+
+function isSuspicious(name, symbol) {
+  const lower = (name + ' ' + symbol).toLowerCase();
+  return SUSPICIOUS.some(k => lower.includes(k));
+}
+
+function periodLabel(p) {
+  return { h1: '1h', h6: '6h', h24: '24h' }[p] || p;
+}
+
+async function fetchTokens(address) {
+  const res = await fetch(PULSESCAN_API + '?module=account&action=tokenlist&address=' + address);
+  const json = await res.json();
+  if (json.status !== '1' || !json.result) return [];
+  return json.result.filter(t => t.type === 'ERC-20');
+}
+
+async function fetchPLSBalance(address) {
+  const res = await fetch(PULSESCAN_API + '?module=account&action=balance&address=' + address);
+  const json = await res.json();
+  return json.result || '0';
+}
+
+async function fetchPrices(addresses) {
+  if (!addresses.length) return {};
+  const batches = [];
+  for (let i = 0; i < addresses.length; i += 30) {
+    batches.push(addresses.slice(i, i + 30));
+  }
+  const prices = {};
+  for (const batch of batches) {
+    try {
+      const res = await fetch(DEXSCREENER_API + batch.join(','));
+      const pairs = await res.json();
+      if (!Array.isArray(pairs)) continue;
+      for (const pair of pairs) {
+        const addr = (pair.baseToken?.address || '').toLowerCase();
+        if (!addr || prices[addr]) continue;
+        prices[addr] = {
+          price: parseFloat(pair.priceUsd) || 0,
+          h1: parseFloat(pair.priceChange?.h1) || 0,
+          h6: parseFloat(pair.priceChange?.h6) || 0,
+          h24: parseFloat(pair.priceChange?.h24) || 0,
+          liquidity: pair.liquidity?.usd || 0,
+          symbol: pair.baseToken?.symbol || '?',
+          name: pair.baseToken?.name || ''
+        };
+      }
+    } catch (e) { /* skip */ }
+  }
+  return prices;
+}
+
+function weightedChange(tokens, total, period) {
+  if (total <= 0) return 0;
+  let change = 0;
+  for (const t of tokens) {
+    change += (t.value / total) * (t[period] || 0);
+  }
+  return change;
+}
+
+function setPeriod(period) {
+  currentPeriod = period;
+  // Update pill states
+  document.querySelectorAll('.period-pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.period === period);
+  });
+  // Update total change + absolute diff
+  const change = weightedChange(currentTokens, currentTotal, period);
+  const changeEl = document.getElementById('totalChange');
+  if (changeEl) {
+    const cls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
+    const arrow = change > 0.1 ? '\u25B2' : change < -0.1 ? '\u25BC' : '';
+    changeEl.className = 'change-value ' + cls;
+    changeEl.textContent = arrow + ' ' + formatPct(change);
+  }
+  const diffEl = document.getElementById('totalDiff');
+  if (diffEl) {
+    const absDiff = currentTotal * (change / (100 + change));
+    const diffSign = absDiff >= 0 ? '+' : '';
+    const diffCls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
+    diffEl.className = 'total-diff ' + diffCls;
+    diffEl.textContent = diffSign + formatUSD(Math.abs(absDiff));
+  }
+  // Update per-token changes
+  document.querySelectorAll('.token-change[data-addr]').forEach(el => {
+    const token = currentTokens.find(t => t.address === el.dataset.addr);
+    if (!token) return;
+    const val = token[period] || 0;
+    el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
+    el.textContent = formatPct(val);
+  });
+}
+
+function renderCard(address, total, tokens) {
+  currentTokens = tokens;
+  currentTotal = total;
+
+  const content = document.getElementById('content');
+  const change = weightedChange(tokens, total, currentPeriod);
+  const changeClass = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
+  const arrow = change > 0.1 ? '\u25B2' : change < -0.1 ? '\u25BC' : '';
+
+  let tokenRows = '';
+  for (const t of tokens.slice(0, 6)) {
+    const pctVal = t[currentPeriod] || 0;
+    const chClass = pctVal >= 0 ? 'up' : 'down';
+    const iconUrl = `https://dd.dexscreener.com/ds-data/tokens/pulsechain/${t.address}.png`;
+    // Escape symbol for safe HTML
+    const safeSymbol = t.symbol.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const fallback = safeSymbol.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2) || '??';
+    tokenRows += `
+      <div class="token-row">
+        <div class="token-left">
+          <div class="token-icon"><img src="${iconUrl}" onerror="this.parentElement.textContent='${fallback}'"></div>
+          <span class="token-symbol">${safeSymbol}</span>
+        </div>
+        <div class="token-right">
+          <div class="token-value">${formatUSD(t.value)}</div>
+          <div class="token-change ${chClass}" data-addr="${t.address}">${formatPct(pctVal)}</div>
+        </div>
+      </div>`;
+  }
+
+  const now = new Date();
+  const time = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    + ' ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+  // Show period pills now that data is loaded
+  document.getElementById('periodPills').style.display = 'flex';
+
+  const absDiff = total * (change / (100 + change));
+  const diffSign = absDiff >= 0 ? '+' : '';
+  const diffClass = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
+
+  content.innerHTML = `
+    <div class="total-section">
+      <div class="total-value">${formatUSD(total)}</div>
+      <div style="margin-top:2px">
+        <span id="totalChange" class="change-value ${changeClass}">${arrow} ${formatPct(change)}</span>
+      </div>
+      <div id="totalDiff" class="total-diff ${diffClass}">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
+    </div>
+    <div class="divider"></div>
+    <div class="tokens-list">${tokenRows}</div>
+    <div class="footer">
+      <span class="timestamp">${time}</span>
+      <a href="${APP_STORE_URL}" class="app-link">Get Ching Ching</a>
+    </div>
+  `;
+}
+
+function renderLoading() {
+  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div>Loading portfolio...</div>';
+}
+
+function renderError(msg) {
+  document.getElementById('content').innerHTML = `<div class="error">${msg}</div>`;
+}
+
+async function loadWallet(addressOverride) {
+  let address = addressOverride || document.getElementById('addrInput')?.value?.trim();
+  if (!address) return;
+
+  const url = new URL(window.location);
+  url.searchParams.set('wallet', address);
+  history.replaceState({}, '', url);
+
+  // Set title from name param or short address
+  const params = new URLSearchParams(window.location.search);
+  const nameParam = params.get('name');
+  document.getElementById('walletTitle').textContent = nameParam || shortAddr(address);
+  document.getElementById('walletSubtitle').textContent = nameParam ? shortAddr(address) : 'PulseChain Portfolio';
+  renderLoading();
+
+  try {
+    const [tokens, plsWei] = await Promise.all([
+      fetchTokens(address),
+      fetchPLSBalance(address)
+    ]);
+
+    const addrs = tokens.map(t => t.contractAddress.toLowerCase());
+    addrs.push(WPLS);
+
+    const prices = await fetchPrices([...new Set(addrs)]);
+
+    const wplsData = prices[WPLS] || { price: 0, h1: 0, h6: 0, h24: 0 };
+    let tokenValues = [];
+
+    // PLS
+    const plsBalance = parseFloat(plsWei) / 1e18;
+    if (plsBalance > 0 && wplsData.price > 0) {
+      tokenValues.push({
+        symbol: 'PLS', address: WPLS,
+        value: plsBalance * wplsData.price,
+        h1: wplsData.h1, h6: wplsData.h6, h24: wplsData.h24
+      });
+    }
+
+    // ERC-20 tokens
+    for (const t of tokens) {
+      const addr = t.contractAddress.toLowerCase();
+      const p = prices[addr];
+      if (!p || p.price <= 0) continue;
+      if (isSuspicious(t.name, t.symbol)) continue;
+      if (p.liquidity < 50) continue;
+
+      const decimals = parseInt(t.decimals) || 18;
+      const balance = parseFloat(t.balance) / Math.pow(10, decimals);
+      const value = balance * p.price;
+      if (value < 0.01) continue;
+
+      tokenValues.push({
+        symbol: p.symbol || t.symbol, address: addr,
+        value, h1: p.h1, h6: p.h6, h24: p.h24
+      });
+    }
+
+    // Deduplicate
+    const bySymbol = {};
+    for (const t of tokenValues) {
+      if (!bySymbol[t.symbol] || t.value > bySymbol[t.symbol].value) {
+        bySymbol[t.symbol] = t;
+      }
+    }
+    tokenValues = Object.values(bySymbol).sort((a, b) => b.value - a.value);
+
+    const total = tokenValues.reduce((s, t) => s + t.value, 0);
+
+    if (total < 0.01) {
+      renderError('No token holdings found for this wallet.');
+      return;
+    }
+
+    renderCard(address, total, tokenValues);
+  } catch (e) {
+    renderError('Failed to load wallet data. Please check the address and try again.');
+    console.error(e);
+  }
+}
+
+// Auto-load if wallet param in URL
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const wallet = params.get('wallet');
+  const name = params.get('name');
+  if (wallet) {
+    document.getElementById('walletTitle').textContent = name || shortAddr(wallet);
+    document.getElementById('walletSubtitle').textContent = name ? shortAddr(wallet) : 'PulseChain Portfolio';
+    document.getElementById('inputSection')?.remove();
+    loadWallet(wallet);
+  } else {
+    document.getElementById('walletTitle').textContent = 'Ching Ching';
+    document.getElementById('walletSubtitle').textContent = 'PulseChain Portfolio';
+  }
+})();
+</script>
+
+</body>
+</html>
