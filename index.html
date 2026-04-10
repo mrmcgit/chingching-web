@@ -210,9 +210,9 @@
       </div>
     </div>
     <div class="period-row" id="periodPills" style="display:none">
-      <span class="period-pill" data-period="h1" onclick="setPeriod('h1')">1h</span>
-      <span class="period-pill" data-period="h6" onclick="setPeriod('h6')">6h</span>
       <span class="period-pill active" data-period="h24" onclick="setPeriod('h24')">24h</span>
+      <span class="period-pill" data-period="d7" onclick="setPeriod('d7')">7d</span>
+      <span class="period-pill" data-period="d30" onclick="setPeriod('d30')">30d</span>
     </div>
   </div>
   <div id="content">
@@ -232,6 +232,7 @@
 <script>
 const PULSESCAN_API = 'https://api.scan.pulsechain.com/api/';
 const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/pulsechain/';
+const COINGECKO_API = 'https://api.coingecko.com/api/v3/coins/pulsechain/contract/';
 const NATIVE_PLS = 'native_pls';
 const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
 const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
@@ -313,6 +314,37 @@ async function fetchPrices(addresses) {
   return prices;
 }
 
+/// Fetch 7d and 30d % change from CoinGecko for a list of token addresses.
+/// Returns { address: { d7: number, d30: number } }
+/// Fetches in parallel, rate-limited to avoid 429s.
+async function fetchHistoricalChanges(addresses) {
+  const results = {};
+  // CoinGecko free tier: ~10-30 req/min. Fetch top tokens only.
+  const toFetch = addresses.slice(0, 8);
+  const promises = toFetch.map(async (addr, i) => {
+    // Stagger requests slightly to stay under rate limit
+    await new Promise(r => setTimeout(r, i * 200));
+    try {
+      const res = await fetch(COINGECKO_API + addr + '/market_chart?vs_currency=usd&days=30');
+      if (!res.ok) return;
+      const data = await res.json();
+      const prices = data.prices;
+      if (!prices || prices.length < 2) return;
+      const now = prices[prices.length - 1][1];
+      const d30Price = prices[0][1];
+      // 7d ago is roughly 168 hourly points from the end
+      const d7Idx = Math.max(0, prices.length - 168);
+      const d7Price = prices[d7Idx][1];
+      results[addr] = {
+        d7: d7Price > 0 ? ((now - d7Price) / d7Price) * 100 : 0,
+        d30: d30Price > 0 ? ((now - d30Price) / d30Price) * 100 : 0
+      };
+    } catch (e) { /* skip failed lookups */ }
+  });
+  await Promise.all(promises);
+  return results;
+}
+
 function weightedChange(tokens, total, period) {
   if (total <= 0) return 0;
   let change = 0;
@@ -330,12 +362,19 @@ function toggleDiffMode() {
 function updateDiffDisplay() {
   const diffEl = document.getElementById('totalDiff');
   if (!diffEl) return;
+  // Check if any tokens have data for this period
+  const hasData = currentTokens.some(t => t[currentPeriod] !== null && t[currentPeriod] !== undefined);
+  if (!hasData && (currentPeriod === 'd7' || currentPeriod === 'd30')) {
+    diffEl.className = 'total-diff flat';
+    diffEl.textContent = 'Loading...';
+    return;
+  }
   const change = weightedChange(currentTokens, currentTotal, currentPeriod);
   const absDiff = currentTotal * (change / (100 + change));
   const cls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
   diffEl.className = 'total-diff ' + cls;
   if (showAbsolute) {
-    const sign = absDiff >= 0 ? '+' : '';
+    const sign = absDiff >= 0 ? '+' : '-';
     diffEl.textContent = sign + formatUSD(Math.abs(absDiff));
   } else {
     const arrow = change > 0.1 ? '\u25B2 ' : change < -0.1 ? '\u25BC ' : '';
@@ -355,9 +394,14 @@ function setPeriod(period) {
   document.querySelectorAll('.token-change[data-addr]').forEach(el => {
     const token = currentTokens.find(t => t.address === el.dataset.addr);
     if (!token) return;
-    const val = token[period] || 0;
-    el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
-    el.textContent = formatPct(val);
+    const val = token[period];
+    if (val === null || val === undefined) {
+      el.className = 'token-change flat';
+      el.textContent = '...';
+    } else {
+      el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
+      el.textContent = formatPct(val);
+    }
   });
 }
 
@@ -399,7 +443,7 @@ function renderCard(address, total, tokens) {
   document.getElementById('periodPills').style.display = 'flex';
 
   const absDiff = total * (change / (100 + change));
-  const diffSign = absDiff >= 0 ? '+' : '';
+  const diffSign = absDiff >= 0 ? '+' : '-';
   const diffClass = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
 
   content.innerHTML = `
@@ -459,7 +503,8 @@ async function loadWallet(addressOverride) {
       tokenValues.push({
         symbol: 'PLS', address: WPLS,
         value: plsBalance * wplsData.price,
-        h1: wplsData.h1, h6: wplsData.h6, h24: wplsData.h24
+        h1: wplsData.h1, h6: wplsData.h6, h24: wplsData.h24,
+        d7: null, d30: null
       });
     }
 
@@ -478,7 +523,8 @@ async function loadWallet(addressOverride) {
 
       tokenValues.push({
         symbol: p.symbol || t.symbol, address: addr,
-        value, h1: p.h1, h6: p.h6, h24: p.h24
+        value, h1: p.h1, h6: p.h6, h24: p.h24,
+        d7: null, d30: null
       });
     }
 
@@ -499,6 +545,26 @@ async function loadWallet(addressOverride) {
     }
 
     renderCard(address, total, tokenValues);
+
+    // Fetch 7d/30d data from CoinGecko in the background (top tokens only)
+    const topAddrs = tokenValues.slice(0, 8).map(t => t.address);
+    fetchHistoricalChanges(topAddrs).then(hist => {
+      for (const t of currentTokens) {
+        const h = hist[t.address];
+        if (h) { t.d7 = h.d7; t.d30 = h.d30; }
+      }
+      // If user is already viewing 7d/30d, refresh the display
+      if (currentPeriod === 'd7' || currentPeriod === 'd30') {
+        updateDiffDisplay();
+        document.querySelectorAll('.token-change[data-addr]').forEach(el => {
+          const token = currentTokens.find(t => t.address === el.dataset.addr);
+          if (!token) return;
+          const val = token[currentPeriod] || 0;
+          el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
+          el.textContent = formatPct(val);
+        });
+      }
+    });
   } catch (e) {
     renderError('Failed to load wallet data. Please check the address and try again.');
     console.error(e);
