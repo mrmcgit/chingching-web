@@ -378,8 +378,9 @@ let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
 const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD', bomb:'a Bomb',
                    wall:'a Sell Wall', sec:'the SEC', notice:'an Interpol Red Notice' };
 
+// Fresh random layout every run; the chart underneath never changes.
 function spawnCourse(){
-  const rng = mulberry32(terrain.dateDay*2654435761 % 2147483647);
+  const rng = mulberry32((Math.random()*0x7fffffff)|0);
   items = [];
   let x = 1000;
   const end = terrain.worldLen - SEG*(BRIDGE+1);
@@ -883,7 +884,7 @@ function scrollSpeed(){
 function startRun(){
   camX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
   wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1;
-  resetCourse(); resetPlayer();
+  spawnCourse(); resetPlayer();   // new obstacle/collectible layout every run
   state = 'countdown'; countdownT = 3; goT = 0; overShown=false;
   runStartTs = performance.now();
   el('start').classList.add('hidden');
