@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ching Ching Arcade: games built on the real PLS chart</title>
+<meta name="description" content="Free origami arcade games built from the actual PLS price history. Fly it, ride it, top the leaderboards.">
+<meta property="og:title" content="Ching Ching Arcade">
+<meta property="og:description" content="Free origami arcade games built from the actual PLS price history.">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
+  background:#F6F1E5; color:#3A3630; min-height:100vh;
+  display:flex; flex-direction:column; align-items:center;
+  padding:48px 16px 60px; -webkit-font-smoothing:antialiased;
+}
+h1 { font-size:34px; font-weight:900; color:#2E2A24; letter-spacing:-0.02em; text-align:center; }
+h1 .accent { color:#E4572E; }
+.sub { font-size:14px; color:rgba(58,54,48,0.55); margin:6px 0 34px; text-align:center; max-width:420px; line-height:1.5; }
+.games { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; max-width:760px; }
+.game {
+  display:block; text-decoration:none; color:inherit; width:330px;
+  background:#FBF8F1; border:1px solid rgba(58,54,48,0.12);
+  box-shadow:0 12px 32px rgba(58,54,48,0.14); padding:22px 22px 20px;
+  position:relative; transition:transform 0.12s ease, box-shadow 0.12s ease;
+}
+.game:hover { transform:translateY(-4px); box-shadow:0 18px 40px rgba(58,54,48,0.20); }
+.game::before {
+  content:''; position:absolute; top:0; right:0; border-style:solid;
+  border-width:0 22px 22px 0; border-color:transparent #EAE3D2 transparent transparent;
+}
+.game canvas { display:block; width:100%; height:150px; }
+.gname { font-size:21px; font-weight:900; color:#2E2A24; margin-top:12px; }
+.gname .accent { color:#E4572E; }
+.gdesc { font-size:13px; color:rgba(58,54,48,0.6); line-height:1.5; margin-top:4px; min-height:58px; }
+.play {
+  display:inline-block; margin-top:12px; background:#E4572E; color:#fff;
+  font-weight:800; font-size:14.5px; letter-spacing:0.03em; padding:10px 26px;
+  box-shadow:0 3px 0 #B23F1E;
+}
+.foot { margin-top:40px; font-size:12px; color:rgba(58,54,48,0.45); text-align:center; line-height:1.7; }
+.foot a { color:#E4572E; font-weight:700; text-decoration:none; }
+</style>
+</head>
+<body>
+<h1>₵HING ₵HING <span class="accent">ARCADE</span></h1>
+<div class="sub">Origami games built on the <b>real PLS chart</b>. Every peak and dip is actual price history. Free, in your browser, live leaderboards.</div>
+
+<div class="games">
+  <a class="game" href="/moonshot/">
+    <canvas id="cvMoon" width="572" height="300"></canvas>
+    <div class="gname">MOON<span class="accent">SHOT</span></div>
+    <div class="gdesc">Fly a paper rocket over the chart. Hold to boost, release to dive. Grab the pumps down low, dodge the sell walls and the SEC up high.</div>
+    <span class="play">PLAY</span>
+  </a>
+  <a class="game" href="/pump-and-jump/">
+    <canvas id="cvPj" width="572" height="300"></canvas>
+    <div class="gname">PUMP <span class="accent">&amp;</span> JUMP</div>
+    <div class="gdesc">Ride the chart on a paper motobike. Jump the dips, hold in the air to backflip, land clean for bonus points. Botch it and you're rekt.</div>
+    <span class="play">PLAY</span>
+  </a>
+</div>
+
+<div class="foot">
+  Part of <a href="https://chingching.xyz">Ching Ching</a>, the privacy-first PulseChain &amp; Ethereum portfolio tracker.
+</div>
+
+<script>
+'use strict';
+/* mini paper renders of each game's hero, same polygon art as in-game */
+function poly(c, pts, fill, stroke){
+  c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+  for (let i=1;i<pts.length;i++) c.lineTo(pts[i][0], pts[i][1]);
+  c.closePath();
+  if (fill){ c.fillStyle=fill; c.fill(); }
+  if (stroke){ c.strokeStyle=stroke; c.lineWidth=1; c.stroke(); }
+}
+function shade(hex, f){
+  const n=parseInt(hex.slice(1),16), r=n>>16&255, g=n>>8&255, b=n&255;
+  const t=f<0?0:255, a=Math.abs(f);
+  const L=(x)=>Math.round(x+(t-x)*a);
+  return 'rgb('+L(r)+','+L(g)+','+L(b)+')';
+}
+function scene(c, W, H, sky){
+  const g=c.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,sky[0]); g.addColorStop(1,sky[1]);
+  c.fillStyle=g; c.fillRect(0,0,W,H);
+  // paper chart floor
+  c.beginPath(); c.moveTo(0,H);
+  const hs=[0.72,0.68,0.74,0.66,0.7,0.6,0.66,0.56,0.62,0.5,0.58,0.46];
+  hs.forEach((v,i)=>c.lineTo(i*(W/(hs.length-1)), H*v));
+  c.lineTo(W,H); c.closePath();
+  c.fillStyle='#FBF7EE'; c.fill();
+  c.strokeStyle='rgba(63,163,94,0.55)'; c.lineWidth=3;
+  c.beginPath(); hs.forEach((v,i)=>{const x=i*(W/(hs.length-1)),y=H*v; i?c.lineTo(x,y):c.moveTo(x,y);}); c.stroke();
+}
+(function(){
+  const cv=document.getElementById('cvMoon'), c=cv.getContext('2d');
+  c.setTransform(2,0,0,2,0,0);
+  scene(c, 286, 150, ['#FDF6E3','#F8ECCD']);
+  // sun
+  c.fillStyle='#F5CE62'; c.beginPath(); c.arc(246,30,15,0,7); c.fill();
+  // rocket
+  c.save(); c.translate(120,64); c.rotate(-0.35); c.scale(2.1,2.1);
+  poly(c,[[-16,-10],[-30,-13],[-16,-16]],'#FFB627');
+  poly(c,[[-16,-11],[-24,-13],[-16,-15]],'#E4572E');
+  poly(c,[[-16,-6],[8,-6],[18,-13],[8,-20],[-16,-20]],'#F0EDE4','rgba(58,54,48,0.35)');
+  poly(c,[[-16,-6],[8,-6],[8,-13],[-16,-13]],shade('#F0EDE4',-0.1));
+  poly(c,[[8,-6],[18,-13],[8,-20]],'#E4572E');
+  poly(c,[[-16,-6],[-8,-6],[-14,2],[-20,2]],'#E4572E');
+  poly(c,[[-16,-20],[-8,-20],[-14,-28],[-20,-28]],shade('#E4572E',-0.15));
+  c.fillStyle='#7FB4D9'; c.beginPath(); c.arc(-1,-13,3.6,0,7); c.fill();
+  c.restore();
+  // coin
+  c.save(); c.translate(220,86); c.scale(1.2,1.2);
+  poly(c,[[0,-13],[11.3,-6.5],[11.3,6.5],[0,13],[-11.3,6.5],[-11.3,-6.5]],'#F2C14E','#8A6A1B');
+  c.restore();
+})();
+(function(){
+  const cv=document.getElementById('cvPj'), c=cv.getContext('2d');
+  c.setTransform(2,0,0,2,0,0);
+  scene(c, 286, 150, ['#EAF2FA','#DCE9F5']);
+  // bike mid-backflip
+  c.save(); c.translate(150,62); c.rotate(-2.6); c.scale(1.9,1.9);
+  for (const wxo of [-16,16]){
+    c.save(); c.translate(wxo,-8);
+    poly(c,[[9.5,0],[4.75,8.23],[-4.75,8.23],[-9.5,0],[-4.75,-8.23],[4.75,-8.23]],'#3A3630');
+    c.restore();
+    c.fillStyle='#FBF8F1'; c.fillRect(wxo-1.6,-9.6,3.2,3.2);
+  }
+  poly(c,[[-16,-10],[-4,-20],[14,-20],[16,-10],[6,-8],[-8,-8]],'#E4572E','rgba(58,54,48,0.35)');
+  poly(c,[[-4,-20],[14,-20],[6,-8]],shade('#E4572E',-0.15));
+  poly(c,[[13,-20],[20,-24],[21,-20]],shade('#E4572E',-0.3));
+  poly(c,[[-8,-20],[2,-20],[6,-29],[-4,-31]],'#4A7BD0','rgba(58,54,48,0.35)');
+  poly(c,[[-6,-31],[6,-31],[4,-38],[-4,-38]],'#F6F1E5','rgba(58,54,48,0.35)');
+  poly(c,[[4,-38],[6,-31],[9,-33]],'#E4572E');
+  c.restore();
+  // motion arc
+  c.strokeStyle='rgba(228,87,46,0.5)'; c.lineWidth=3; c.setLineDash([7,7]);
+  c.beginPath(); c.arc(150,105,58,-2.6,-0.5); c.stroke();
+})();
+</script>
+</body>
+</html>

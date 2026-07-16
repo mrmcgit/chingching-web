@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Moonshot — Fly the real PLS chart | Ching Ching</title>
-<meta name="description" content="An origami rocket flight over the actual PLS price history. Dive for the pumps, dodge the sell walls and the SEC.">
-<meta property="og:title" content="Moonshot — Fly the real PLS chart">
-<meta property="og:description" content="An origami rocket game built from the actual PLS price history. Play free at chingching.xyz">
+<title>Pump &amp; Jump — Ride the real PLS chart | Ching Ching</title>
+<meta name="description" content="Origami motocross over the actual PLS price history. Jump the dips, backflip off the pumps, land clean or get rekt.">
+<meta property="og:title" content="Pump & Jump — Ride the real PLS chart">
+<meta property="og:description" content="An origami motocross game built from the actual PLS price history. Play free at chingching.xyz">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { height:100%; overflow:hidden; overscroll-behavior:none; }
@@ -109,18 +109,18 @@ h1 .accent { color:#E4572E; }
 <body>
 <canvas id="game"></canvas>
 <button id="muteBtn" class="iconbtn" title="Sound">&#128266;</button>
-<div id="tapStart" class="hidden">HOLD TO BOOST &middot; RELEASE TO DIVE</div>
+<div id="tapStart" class="hidden">TAP TO JUMP &middot; HOLD IN AIR TO FLIP</div>
 
 <!-- ===================== START ===================== -->
 <div id="start" class="panel">
-  <h1>MOON<span class="accent">SHOT</span></h1>
-  <div class="sub">Fly the <b>real PLS chart</b>. Every peak and dip is actual price history.</div>
+  <h1>PUMP <span class="accent">&amp;</span> JUMP</h1>
+  <div class="sub">Ride the <b>real PLS chart</b>. Every peak and dip is actual price history.</div>
   <canvas id="rocketPreview" width="300" height="170" style="width:150px;height:85px;margin:12px auto 0;display:block;"></canvas>
   <button id="playBtn" class="btn">PLAY</button>
   <div class="btn-row">
     <button id="boardBtn1" class="btn secondary">Leaderboard</button>
   </div>
-  <div class="hint" id="startHint"><b>Hold</b> <span class="kbd">SPACE</span> / hold tap to boost &middot; release to dive<br>pumps sit low &middot; sell walls &amp; the SEC rule the sky &middot; touch the chart = rekt</div>
+  <div class="hint" id="startHint"><span class="kbd">SPACE</span> / tap to jump &middot; <b>hold in air to backflip</b><br>land clean for flip bonuses &middot; botch the landing = rekt</div>
   <div class="hint" id="bestLine"></div>
   <div class="hint" style="margin-top:6px;"><a href="/arcade/" style="color:#E4572E; font-weight:800; text-decoration:none;">&#127918; more Ching Ching arcade</a></div>
 </div>
@@ -173,13 +173,13 @@ h1 .accent { color:#E4572E; }
 <script>
 'use strict';
 /* =====================================================================
-   MOONSHOT — an origami rocket flight over the real PLS price chart.
+   PUMP & JUMP — origami motocross over the real PLS price chart.
    Single file, vanilla JS + Canvas 2D. Part of Ching Ching (chingching.xyz).
    ===================================================================== */
 
 /* ---------------- config ---------------- */
 const API = 'https://pnj.chingching.xyz';
-const GAME = 'moonshot';        // slug shared by scores, events, and the leaderboard
+const GAME = 'pump-and-jump';   // slug shared by scores, events, and the leaderboard
 const SEG = 90;              // world px per daily price point
 const DENSE = 4;             // heightmap sample step
 const BRIDGE = 10;           // interpolated points joining last day back to first
@@ -377,7 +377,7 @@ function softShadow(x, y, w){
    ===================================================================== */
 let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
 const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD', bomb:'a Bomb',
-                   wall:'a Sell Wall', sec:'the SEC', notice:'an Interpol Red Notice' };
+                   sec:'the SEC', notice:'an Interpol Red Notice' };
 
 // Fresh random layout every run; the chart underneath never changes.
 function spawnCourse(){
@@ -413,44 +413,15 @@ function spawnCourse(){
     }
     x += 270 + rng()*330;
   }
-  // high-altitude hazard: sell walls hang from the sky on a cadence that makes
-  // camping the top of the screen a death sentence. Wall length is a FRACTION
-  // of the local ceiling-to-chart clearance, so a flyable gap always remains
-  // even over all-time-high peaks (and survives resizes).
-  let hx = 1500;
-  while (hx < end){
-    items.push({ type:'wall', x:hx, frac:0.22 + rng()*0.20, w:38, ob:true, high:true });
-    hx += 560 + rng()*480;
-  }
   for (const it of items) it.hit = false;
 }
 function resetCourse(){ for (const it of items) it.hit = false; }
 
-/* sky-hazard geometry: fraction of local ceiling→chart clearance */
-function wallBottom(it){ return 34 + (groundY(it.x) - 34) * it.frac; }
-
 /* item drawing (terrain-relative for ground items, clearance-relative for sky hazards) */
 function drawItem(it, sx){
-  const y = it.type==='wall' ? 0 : groundY(it.x) - it.dy;
+  const y = groundY(it.x) - it.dy;
   ctx.save(); ctx.translate(sx, y);
   switch(it.type){
-    case 'wall': {
-      const w = it.w, b = wallBottom(it);
-      poly([[-w/2,0],[w/2,0],[w/2,b],[0,b+14],[-w/2,b]], '#C0392B');
-      poly([[0,0],[w/2,0],[w/2,b],[0,b+14]], shade('#C0392B',-0.18));
-      // brick creases
-      ctx.strokeStyle='rgba(58,54,48,0.25)'; ctx.lineWidth=1;
-      for (let yy=22; yy<b-6; yy+=24){
-        ctx.beginPath(); ctx.moveTo(-w/2,yy); ctx.lineTo(w/2,yy); ctx.stroke();
-      }
-      ctx.fillStyle='#FBF8F1';
-      ctx.font='900 11px -apple-system, sans-serif';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.save(); ctx.translate(0, b*0.45); ctx.rotate(-Math.PI/2);
-      ctx.fillText('SELL', 0, 0);
-      ctx.restore();
-      break;
-    }
     case 'sec': {
       // the SEC: a flying paper subpoena with a red seal
       const b = Math.sin(now*1.7 + it.x*0.6)*6;
@@ -584,56 +555,85 @@ function candle(col, w, h, evil){
    CHARACTERS — five origami variants with pluggable controllers
    ===================================================================== */
 const VARIANTS = {
-  rocket: { name:'Rocket', desc:'Hold to boost. Touch the chart = rekt.', ctrl:'rocket' },
+  moto: { name:'Motobike', desc:'Tap to jump. Hold in air to backflip.', ctrl:'moto', jumpV:-830 },
 };
-const variantKey = 'rocket';
+const variantKey = 'moto';
 
 const player = { y:0, vy:0, grounded:false, angle:0, spd:0, anim:0 };
 
 function resetPlayer(){
   const px = camX + W*PLAYER_SX;
-  player.vy = 0; player.angle = 0; player.anim = 0;
-  player.grounded = false;
-  player.y = groundY(px) - 130;
+  player.vy = 0; player.angle = 0; player.anim = 0; player.spin = 0;
+  player.grounded = true;
+  player.y = groundY(px);
   player.spd = BASE_SPEED;
 }
 
 function updatePlayer(dt){
   const px = camX + W*PLAYER_SX;
   const gy = groundY(px);
+  const slope = groundSlope(px);
   player.anim += dt;
-  // hold = thrust up, release = dive. Touching the chart ends the run.
-  if (input.held) player.vy -= 3600*dt; else player.vy += 1600*dt;
-  player.vy = clamp(player.vy, -480, 640);
-  player.y += player.vy*dt;
-  if (player.y < 34){ player.y = 34; player.vy = Math.max(player.vy,0); }
-  if (player.y >= gy - 8) return die('the chart');
+  if (player.grounded){
+    player.y = gy;
+    player.angle = Math.atan2(slope,1)*0.9;
+    if (input.pressed){ player.grounded=false; player.vy = VARIANTS.moto.jumpV - scrollSpeed()*0.12; player.spin = 0; sfx('jump'); }
+    else {
+      const drop = groundY(px+18) - gy;
+      if (drop > 30){ player.grounded=false; player.vy = 0; player.spin = 0; }   // launched off a peak
+    }
+  } else {
+    player.vy += GRAVITY*dt;
+    player.y += player.vy*dt;
+    if (input.held){
+      player.angle -= 8.0*dt; player.spin += 8.0*dt;                             // backflip
+      if (player.angle <= -Math.PI) player.angle += TAU;                         // wrap so recovery never unwinds the long way
+    }
+    else player.angle = lerp(player.angle, Math.atan2(player.vy, scrollSpeed())*0.35, 3*dt);
+    if (player.y >= gy && player.vy >= 0){
+      let d = player.angle - Math.atan2(slope,1);
+      while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
+      if (Math.abs(d) > 1.05) return die('a botched flip');
+      const flips = Math.floor(player.spin / TAU + 0.25);                        // bank clean backflips
+      if (flips > 0){
+        const bonus = flips * 50;
+        score += bonus;
+        floaters.push({ x:W*PLAYER_SX, y:player.y-70, t:0, txt:(flips>1 ? flips+'x ' : '')+'FLIP +'+bonus });
+        sfx('moon');
+      }
+      player.spin = 0;
+      player.grounded = true; player.y = gy; player.vy = 0;
+      player.angle = Math.atan2(slope,1)*0.9;
+      sfx('land');
+    }
+  }
   return null;
 }
 
-/* ---- rocket art (local frame: origin at base, facing +x) ---- */
+/* ---- motobike art (local frame: origin at wheels, facing +x) ---- */
 function drawCharacter(key, t, grounded, vy, angle, forCard){
-  const A='#E4572E';
+  const A='#E4572E', OUT='rgba(58,54,48,0.35)';
   ctx.save();
-  ctx.rotate((angle||0) + 0.15 + (vy||0)*0.0006);
-  // flame while boosting
-  if (input.held && state==='playing' && !forCard){
-    const f = Math.random();
-    poly([[-16,-10],[-30-f*10,-13],[-16,-16]], '#FFB627');
-    poly([[-16,-11],[-24-f*6,-13],[-16,-15]], '#E4572E');
-  } else if (forCard){
-    poly([[-16,-10],[-28,-13],[-16,-16]], '#FFB627');
+  ctx.rotate(angle||0);
+  const spin = grounded ? t*9 : t*4;
+  // wheels: paper hexagons with fold spokes
+  for (const wxo of [-16, 16]){
+    ctx.save(); ctx.translate(wxo,-8); ctx.rotate(spin);
+    hexPoly(9.5, '#3A3630');
+    poly([[0,0],[9.5,0],[4.75,8.2]], shade('#3A3630',0.22));
+    ctx.restore();
+    ctx.fillStyle='#FBF8F1'; ctx.fillRect(wxo-1.6,-9.6,3.2,3.2);
   }
-  // body
-  poly([[-16,-6],[8,-6],[18,-13],[8,-20],[-16,-20]], '#F0EDE4', 'rgba(58,54,48,0.3)');
-  poly([[-16,-6],[8,-6],[8,-13],[-16,-13]], shade('#F0EDE4',-0.1));
-  poly([[8,-6],[18,-13],[8,-20],[8,-6]], A);        // nose
-  poly([[-16,-6],[-8,-6],[-14,2],[-20,2]], A);       // fin low
-  poly([[-16,-20],[-8,-20],[-14,-28],[-20,-28]], shade(A,-0.15)); // fin high
-  ctx.fillStyle='#7FB4D9';
-  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.fill();
-  ctx.strokeStyle=shade('#F0EDE4',-0.25); ctx.lineWidth=1;
-  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.stroke();
+  // frame
+  poly([[-16,-10],[-4,-20],[14,-20],[16,-10],[6,-8],[-8,-8]], A, OUT);
+  poly([[-4,-20],[14,-20],[6,-8]], shade(A,-0.15));
+  poly([[13,-20],[20,-24],[21,-20]], shade(A,-0.3)); // handlebar
+  // rider hunched (tucks tighter mid-flip)
+  const tuck = (!grounded && input.held) ? 3 : 0;
+  poly([[-8,-20],[2,-20],[6,-32+tuck],[-4,-34+tuck]], '#4A7BD0', OUT);
+  poly([[2,-20],[6,-32+tuck],[10,-30+tuck],[6,-19]], shade('#4A7BD0',-0.16));
+  poly([[-6,-34+tuck],[6,-34+tuck],[4,-41+tuck],[-4,-41+tuck]], '#F6F1E5', OUT); // helmet
+  poly([[4,-41+tuck],[6,-34+tuck],[9,-36+tuck]], A);
   ctx.restore();
 }
 
@@ -731,7 +731,7 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 /* =====================================================================
    SCORES / LEADERBOARD
    ===================================================================== */
-let best = parseInt(localStorage.getItem('pnj_best')||'0',10) || 0;
+let best = parseInt(localStorage.getItem('pj_best')||'0',10) || 0;
 function playerName(){ return (localStorage.getItem('pnj_name')||'').trim(); }
 
 async function submitScore(run){
@@ -806,16 +806,16 @@ async function shareScore(run){
   // text
   x.fillStyle='#2E2A24'; x.textAlign='left';
   x.font='900 44px -apple-system, Helvetica, sans-serif';
-  x.fillText('MOONSHOT', 70, 110);
+  x.fillText('PUMP & JUMP', 70, 110);
   x.fillStyle='#E4572E'; x.font='800 22px -apple-system, Helvetica, sans-serif';
-  x.fillText('I FLEW THE REAL PLS CHART', 70, 152);
+  x.fillText('I RODE THE REAL PLS CHART', 70, 152);
   x.fillStyle='#2E2A24'; x.font='900 170px -apple-system, Helvetica, sans-serif';
   x.fillText(run.score.toLocaleString(), 62, 350);
   x.fillStyle='rgba(58,54,48,0.6)'; x.font='700 26px -apple-system, Helvetica, sans-serif';
   x.fillText(`${run.distance.toLocaleString()}m through PLS history`, 70, 400);
   // character
   x.save(); x.translate(950,430); x.scale(4.4,4.4);
-  drawOnto(x, ()=> drawCharacter(variantKey, 0.35, true, 0, variantKey==='rocket'?-0.1:0, true));
+  drawOnto(x, ()=> drawCharacter(variantKey, 0.35, true, 0, 0, true));
   x.restore();
   // CTA
   x.fillStyle='#E4572E'; x.fillRect(70,470,520,86);
@@ -823,11 +823,11 @@ async function shareScore(run){
   x.fillStyle='#fff'; x.font='900 30px -apple-system, Helvetica, sans-serif';
   x.fillText('PLAY ON CHING CHING', 100, 512);
   x.font='700 21px -apple-system, Helvetica, sans-serif';
-  x.fillText('chingching.xyz/moonshot', 100, 543);
+  x.fillText('chingching.xyz/pump-and-jump', 100, 543);
 
   const blob = await new Promise(res=>c.toBlob(res,'image/png'));
-  const file = new File([blob], 'moonshot-score.png', { type:'image/png' });
-  const text = `I scored ${run.score.toLocaleString()} flying the real PLS chart in Moonshot 🚀📈\n\nPlay: https://chingching.xyz/moonshot/`;
+  const file = new File([blob], 'pump-and-jump-score.png', { type:'image/png' });
+  const text = `I scored ${run.score.toLocaleString()} riding the real PLS chart in Pump & Jump 🏍📈\n\nPlay: https://chingching.xyz/pump-and-jump/`;
   if (navigator.canShare && navigator.canShare({ files:[file] })){
     try { await navigator.share({ files:[file], text }); return; } catch(e){ if (e.name==='AbortError') return; }
   }
@@ -849,7 +849,6 @@ const input = { held:false, pressed:false };
 function press(){
   audio();
   if (state==='playing'){ input.held=true; input.pressed=true; }
-  else if (state==='countdown'){ input.held=true; }              // pre-arm the boost
   else if (state==='menu' && !panelOpen()) startRun();
   else if (state==='dead' && overShown && !panelOpen()) restart();
 }
@@ -909,7 +908,7 @@ function die(cause){
   const distance = Math.round(camX/10);
   lastRun = { score: Math.round(score), distance, durationMs: Math.round(performance.now()-runStartTs), cause };
   const isBest = lastRun.score > best;
-  if (isBest){ best = lastRun.score; localStorage.setItem('pnj_best', String(best)); }
+  if (isBest){ best = lastRun.score; localStorage.setItem('pj_best', String(best)); }
   track('game_over', { score:lastRun.score, distance, run_duration_ms:lastRun.durationMs, obstacles_hit:cause });
   submitScore(lastRun);
   setTimeout(()=>{
@@ -982,7 +981,7 @@ function frame(ts){
     const prev = Math.ceil(countdownT);
     countdownT -= dt;
     if (Math.ceil(countdownT) !== prev && countdownT > 0) sfx('tick');
-    player.y = groundY(camX + W*PLAYER_SX) - 130 + Math.sin(now*3)*5;   // hover on the pad
+    player.y = groundY(camX + W*PLAYER_SX);   // parked on the chart
     updateWeather(dt); updateParticles(dt, 0);
     if (countdownT <= 0){
       state = 'playing'; goT = 0.7;
@@ -1005,7 +1004,7 @@ function frame(ts){
     updateWeather(dt); updateParticles(dt, 0);
   } else {
     updateWeather(dt); updateParticles(dt, 40);
-    if (state==='menu' && terrain) player.y = groundY(camX + W*PLAYER_SX) - 120 + Math.sin(now*1.6)*8;  // idle hover
+    if (state==='menu' && terrain) player.y = groundY(camX + W*PLAYER_SX);  // parked
   }
   input.pressed = false;
   render();
@@ -1013,15 +1012,10 @@ function frame(ts){
 
 function checkCollisions(){
   const px = camX + W*PLAYER_SX;
-  const pyC = player.y - 13;                       // rocket body centre
+  const pyC = player.y - 20;                       // bike + rider centre
   const lo = px-260, hiX = px+60;
   for (const it of items){
     if (it.x < lo || it.x > hiX || it.hit) continue;
-    if (it.type === 'wall'){
-      if (Math.abs(it.x-px) < it.w/2 + PLAYER_R - 5 && pyC < wallBottom(it) + PLAYER_R - 5)
-        return die(OB_LABEL.wall);
-      continue;
-    }
     const iy = groundY(it.x) - it.dy;
     const dx = it.x-px, dy = iy-pyC;
     const rr = it.r + PLAYER_R;
@@ -1233,8 +1227,8 @@ function buildRocketPreview(){
   const cx = cv.getContext('2d');
   cx.setTransform(2,0,0,2,0,0);
   cx.clearRect(0,0,150,85);
-  cx.translate(72,58); cx.scale(1.7,1.7);
-  drawOnto(cx, ()=>drawCharacter('rocket', 0.3, false, 0, -0.1, true));
+  cx.translate(75,72); cx.scale(1.55,1.55);
+  drawOnto(cx, ()=>drawCharacter('moto', 0.3, true, 0, 0, true));
 }
 function updateStartHint(){
   el('bestLine').textContent = best>0 ? `Personal best: ${best.toLocaleString()}` : '';
