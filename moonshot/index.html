@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Moonshot — Fly the real PLS chart | Ching Ching</title>
+<meta name="description" content="An origami rocket flight over the actual PLS price history. Dive for the pumps, dodge the sell walls and the SEC.">
+<meta property="og:title" content="Moonshot — Fly the real PLS chart">
+<meta property="og:description" content="An origami rocket game built from the actual PLS price history. Play free at chingching.xyz">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; overflow:hidden; overscroll-behavior:none; }
+body {
+  font-family: -apple-system, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  background:#F6F1E5; color:#3A3630;
+  -webkit-font-smoothing:antialiased; user-select:none; -webkit-user-select:none;
+  touch-action:none;
+}
+#game { position:fixed; inset:0; display:block; touch-action:none; }
+
+/* ---------- shared panel look: folded paper ---------- */
+.panel {
+  position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+  background:#FBF8F1;
+  border:1px solid rgba(58,54,48,0.12);
+  box-shadow: 0 18px 50px rgba(58,54,48,0.22), 0 2px 0 rgba(58,54,48,0.06);
+  padding:22px 24px 20px; width:min(400px, calc(100vw - 32px));
+  max-height:calc(100vh - 40px); overflow-y:auto;
+  text-align:center; z-index:20;
+}
+.panel::before { /* folded corner */
+  content:''; position:absolute; top:0; right:0; width:0; height:0;
+  border-style:solid; border-width:0 26px 26px 0;
+  border-color:transparent #EAE3D2 transparent transparent;
+  filter:drop-shadow(-2px 2px 2px rgba(58,54,48,0.10));
+}
+h1 { font-size:30px; font-weight:900; letter-spacing:-0.02em; color:#2E2A24; }
+h1 .accent { color:#E4572E; }
+.sub { font-size:13px; color:rgba(58,54,48,0.55); margin-top:4px; }
+.btn {
+  display:inline-block; border:none; cursor:pointer; font:inherit;
+  font-weight:800; font-size:16px; letter-spacing:0.02em;
+  background:#E4572E; color:#fff; padding:12px 34px; margin-top:14px;
+  box-shadow: 0 4px 0 #B23F1E, 0 8px 16px rgba(178,63,30,0.25);
+  transition: transform 0.06s ease;
+}
+.btn:active { transform:translateY(3px); box-shadow:0 1px 0 #B23F1E; }
+.btn.secondary { background:#FBF8F1; color:#3A3630; border:1px solid rgba(58,54,48,0.2); box-shadow:0 3px 0 rgba(58,54,48,0.15); font-size:14px; padding:10px 20px; }
+.btn-row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+
+/* ---------- character select ---------- */
+#chars { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:14px; }
+.char-card {
+  width:104px; padding:6px 4px 7px; cursor:pointer; background:#FFFEFA;
+  border:2px solid rgba(58,54,48,0.12); position:relative;
+  transition:border-color 0.12s ease, transform 0.12s ease;
+}
+.char-card:hover { transform:translateY(-2px); }
+.char-card.sel { border-color:#E4572E; box-shadow:0 4px 12px rgba(228,87,46,0.2); }
+.char-card canvas { width:92px; height:64px; display:block; margin:0 auto; }
+.char-card .cname { font-size:11px; font-weight:800; margin-top:3px; color:#2E2A24; }
+.char-card .cdesc { font-size:9px; color:rgba(58,54,48,0.5); line-height:1.25; margin-top:1px; min-height:22px; }
+
+.hint { font-size:12px; color:rgba(58,54,48,0.5); margin-top:12px; line-height:1.5; }
+.kbd { display:inline-block; border:1px solid rgba(58,54,48,0.25); border-bottom-width:2px; padding:0 6px; font-size:11px; background:#fff; }
+
+/* ---------- game over ---------- */
+#over .score-big { font-size:52px; font-weight:900; color:#2E2A24; letter-spacing:-0.03em; line-height:1.05; margin-top:6px; }
+#over .newbest { color:#E4572E; font-weight:900; font-size:13px; letter-spacing:0.14em; margin-top:2px; visibility:hidden; }
+.statrow { display:flex; justify-content:center; gap:22px; margin-top:10px; font-size:12px; color:rgba(58,54,48,0.6); }
+.statrow b { display:block; font-size:17px; color:#2E2A24; }
+#nameWrap { margin-top:14px; }
+#pname {
+  font:inherit; font-weight:700; font-size:15px; text-align:center;
+  width:200px; padding:8px 10px; border:1.5px solid rgba(58,54,48,0.25);
+  background:#fff; color:#2E2A24; outline:none;
+}
+#pname:focus { border-color:#E4572E; }
+
+/* ---------- leaderboard ---------- */
+#board .tabs { display:flex; gap:0; margin-top:12px; border:1px solid rgba(58,54,48,0.18); }
+#board .tab { flex:1; padding:8px 0; font-size:12.5px; font-weight:800; cursor:pointer; background:#F2EDE0; color:rgba(58,54,48,0.55); }
+#board .tab.on { background:#E4572E; color:#fff; }
+#board ol { list-style:none; margin-top:8px; min-height:120px; }
+#board li { display:flex; align-items:center; gap:10px; padding:7px 8px; font-size:13.5px; border-bottom:1px dashed rgba(58,54,48,0.12); }
+#board li .rank { width:24px; font-weight:900; color:rgba(58,54,48,0.4); text-align:right; }
+#board li .bname { flex:1; text-align:left; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#board li .bscore { font-weight:900; color:#2E2A24; }
+#board li.me { background:#FDEEE8; }
+#board .empty { padding:30px 0; font-size:13px; color:rgba(58,54,48,0.45); }
+
+/* ---------- HUD buttons ---------- */
+.iconbtn {
+  position:fixed; z-index:15; width:40px; height:40px; border:1px solid rgba(58,54,48,0.15);
+  background:rgba(251,248,241,0.85); cursor:pointer; font-size:17px; line-height:38px; text-align:center;
+  box-shadow:0 2px 6px rgba(58,54,48,0.12);
+}
+#muteBtn { right:12px; top:calc(12px + env(safe-area-inset-top)); }
+
+.hidden { display:none !important; }
+#tapStart {
+  position:fixed; left:50%; bottom:18%; transform:translateX(-50%); z-index:14;
+  font-weight:900; font-size:15px; letter-spacing:0.18em; color:rgba(46,42,36,0.75);
+  animation:pulse 1.1s ease-in-out infinite; pointer-events:none;
+}
+@keyframes pulse { 50% { opacity:0.35; } }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<button id="muteBtn" class="iconbtn" title="Sound">&#128266;</button>
+<div id="tapStart" class="hidden">HOLD TO BOOST &middot; RELEASE TO DIVE</div>
+
+<!-- ===================== START ===================== -->
+<div id="start" class="panel">
+  <h1>MOON<span class="accent">SHOT</span></h1>
+  <div class="sub">Fly the <b>real PLS chart</b>. Every peak and dip is actual price history.</div>
+  <canvas id="rocketPreview" width="300" height="170" style="width:150px;height:85px;margin:12px auto 0;display:block;"></canvas>
+  <button id="playBtn" class="btn">PLAY</button>
+  <div class="btn-row">
+    <button id="boardBtn1" class="btn secondary">Leaderboard</button>
+  </div>
+  <div class="hint" id="startHint"><b>Hold</b> <span class="kbd">SPACE</span> / hold tap to boost &middot; release to dive<br>pumps sit low &middot; sell walls &amp; the SEC rule the sky &middot; touch the chart = rekt</div>
+  <div class="hint" id="bestLine"></div>
+</div>
+
+<!-- ===================== GAME OVER ===================== -->
+<div id="over" class="panel hidden">
+  <h1 id="overTitle">REKT<span class="accent">!</span></h1>
+  <div class="sub" id="deathCause"></div>
+  <div class="score-big" id="finalScore">0</div>
+  <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
+  <div class="statrow">
+    <span><b id="statDist">0</b>distance</span>
+    <span><b id="statCoins">0</b>collected</span>
+    <span><b id="statBest">0</b>best</span>
+  </div>
+  <div id="nameWrap">
+    <input id="pname" maxlength="16" placeholder="name for leaderboard" autocomplete="off">
+    <button id="saveNameBtn" class="btn secondary" style="padding:8px 16px; font-size:13px; margin-top:0; vertical-align:top;">SAVE</button>
+    <div id="nameStatus" style="font-size:11px; color:#3FA35E; font-weight:700; margin-top:5px; min-height:14px;"></div>
+  </div>
+  <div class="btn-row">
+    <button id="restartBtn" class="btn">RUN IT BACK</button>
+  </div>
+  <div class="btn-row">
+    <button id="shareBtn" class="btn secondary">Share score</button>
+    <button id="boardBtn2" class="btn secondary">Leaderboard</button>
+  </div>
+  <div class="hint"><span class="kbd">SPACE</span> to restart</div>
+</div>
+
+<!-- ===================== LEADERBOARD ===================== -->
+<div id="board" class="panel hidden">
+  <h1 style="font-size:22px;">LEADERBOARD</h1>
+  <div class="tabs">
+    <div class="tab on" data-p="daily">Daily</div>
+    <div class="tab" data-p="weekly">Weekly</div>
+    <div class="tab" data-p="alltime">All-Time</div>
+  </div>
+  <ol id="boardList"><div class="empty">Loading&hellip;</div></ol>
+  <button id="boardClose" class="btn secondary">Close</button>
+</div>
+
+<script id="baked" type="application/json">{"token":"PLS","date":1784160000,"startDay":19509,"prices":[120249,149112,155528,153805,140434,133526,121808,111945,102857,91905,98682,84220,85484,78870,84803,102462,102100,100746,97039,104793,108034,102045,106651,99014,96465,93087,91274,85771,88123,100937,93826,92034,96333,92757,91751,93139,91990,104021,99625,105426,108971,110167,122452,118150,116323,117514,112510,106437,107375,109089,104420,102489,101519,96776,99104,100807,101478,104682,101480,100830,64567,45801,57101,73931,62618,69612,56452,56104,57907,54439,54072,49423,44789,54399,53342,49508,46449,46299,45782,46211,45630,42989,38123,38578,35612,34595,35043,37274,40239,41647,39830,38018,38310,38291,38843,37228,38150,39749,39360,38220,38558,37287,35244,36237,35840,39214,43543,41011,40754,41353,46147,45488,44008,44769,44072,42801,41567,43275,42246,44073,44313,46713,47112,45583,45327,45952,46592,46950,45008,44809,43512,40770,41537,40587,41247,41206,40877,42639,42899,44326,46538,49400,53214,58452,67647,67941,68617,66376,59844,55368,53811,58291,59244,63227,63560,61951,64777,69572,69187,69266,68644,74217,71539,72798,69815,67359,65805,71745,68437,67790,66260,60917,58958,56963,60977,62731,62332,61388,59710,57580,58805,56314,57229,64779,63165,63512,56804,52123,48873,49953,54750,54382,53599,49455,50575,51095,53673,53903,54629,55220,56821,59207,61705,59840,61506,63004,63349,64896,63342,65392,63193,64204,63548,61514,62359,60914,57518,55008,55803,50924,53705,61207,72907,88432,85760,82330,90700,107453,126845,127179,123143,142863,121576,120493,118388,106226,109505,110277,111467,117940,114252,115734,119852,131371,125720,130619,124714,122539,117585,115096,116827,118586,122523,131290,137742,141368,145400,142779,145800,148281,148276,147480,143613,133640,136161,132198,131428,122345,123687,129923,135193,135218,132876,153457,158298,156231,162141,151717,142081,145075,148014,173227,172569,174460,175909,172997,170272,158092,149793,125929,135036,123615,111532,123307,119216,114878,107556,115660,119259,117087,111623,111388,109005,106455,101097,103043,96663,99409,98501,95991,97320,97913,104364,97804,94608,85370,80117,74814,80575,78996,79915,76901,80313,83990,81352,77169,79035,75024,72828,71020,70462,71019,70935,70468,64989,62659,58874,57512,59530,61430,61680,58503,58213,62571,60870,59757,61793,60107,57628,60437,59613,60103,59653,54919,56326,56291,52458,54413,52335,51453,50720,48687,48806,47862,47264,47406,47006,48045,49918,50257,56853,54830,51887,51394,50542,48249,48331,51286,49575,48853,48203,47614,46587,45932,45864,46489,45998,45029,44021,43510,45007,44157,45283,46495,46294,46252,46697,45387,43874,41314,40968,41620,40224,39052,39454,38370,40367,41732,42795,42356,44490,44854,45877,46976,51367,51068,49834,49388,49079,49764,47574,48485,47443,45666,46523,45431,44826,44476,41668,40559,39793,37996,39288,35174,37664,35354,35910,34505,35446,36992,36547,35918,36298,36373,36389,36491,36241,36382,36414,37465,37856,36923,36345,35358,34788,33748,33463,34083,33159,32882,31828,32944,32277,32140,32729,32780,33650,34663,34005,37321,38120,39349,37694,36836,37942,40576,41291,45276,45806,47119,45721,43974,43099,46214,47357,51664,56359,53103,52421,53308,53399,56569,57802,56554,57238,53625,51672,49883,53364,53318,48961,50015,49910,51986,51935,50733,49337,50503,47884,46440,46693,47082,43656,43640,44257,47071,49257,49031,48743,48689,48316,46259,44342,46563,51728,52464,51996,53266,56097,58278,56177,56002,53871,53577,56486,56565,60794,63509,62372,68557,68691,67865,68383,65956,64776,71486,71956,77051,81518,83854,79837,77307,82171,80541,84979,83711,84374,77616,75660,79857,79114,81517,80844,79066,78166,73867,73252,73456,70340,51889,57656,57876,61138,61823,57574,58108,55979,52377,53749,53104,49530,49384,50011,49573,50109,48602,45203,46024,44956,46077,47113,47480,44932,50036,54688,56648,55810,50166,46526,49203,50552,49639,50847,51938,52740,52194,49154,49820,51733,51500,51130,49058,46365,49761,49071,48986,46731,54957,54979,54255,56891,55550,57194,51800,46433,44426,44920,45686,45288,44498,42703,42421,46823,44090,38327,39915,39886,36976,42512,42469,45515,38924,39498,39059,40570,37544,36908,35166,35776,34577,34711,32645,30148,33435,33378,31576,30352,30475,26673,29419,28519,26804,27607,28360,27202,23536,22543,21087,18136,20431,20440,21517,23416,22951,22983,19807,21441,20835,23560,23056,25085,25813,24936,25641,25242,25807,27074,27585,33465,31496,34766,34422,35694,34073,35588,35374,32354,31438,29429,28729,30272,28740,25465,25624,26696,29490,30215,32197,35168,37712,34996,35624,40709,38876,38411,39957,38837,41105,40587,42235,43862,41118,39577,40460,39677,41247,40786,38118,35825,35735,34057,34124,32685,32764,32963,30175,32491,31547,30641,31112,33916,35569,31790,30987,29903,29962,29430,28687,27049,24808,24645,23788,24260,24205,24054,24782,22776,23892,22965,23697,24499,23681,23947,24582,24917,24701,27332,25604,26782,27662,29377,30363,30183,28808,28000,26527,29557,28267,29897,30104,32841,31501,32685,32083,33296,34296,36224,42104,39820,46092,49444,50034,44643,41319,44557,47038,44200,45051,48417,49104,51309,50284,50458,52827,52580,51390,50263,50893,54786,52484,49032,50796,48098,51508,51415,49431,47144,42847,41750,42818,41177,41535,42955,41176,39727,39943,37799,37779,38243,38930,41497,41284,42188,42514,46272,45664,45161,42583,42184,41321,42152,39113,38088,37847,36756,36433,34578,31702,34011,33728,34723,35554,34847,36327,34339,35602,34303,33717,32913,32458,32053,30179,29951,28942,32048,33078,31574,30433,30336,27051,28376,31052,30904,29856,28401,29759,31254,30748,34770,36405,35086,33413,31703,31627,29977,29269,27596,27257,29730,30348,30465,29419,29837,30356,26738,24762,23018,22145,21521,21327,20625,21329,20290,18534,18184,18211,19003,19203,19132,20437,20390,19648,18824,19294,16881,16560,15103,16723,16898,16548,17820,18755,19569,19866,20255,19248,19409,18247,17678,17028,15667,15877,16665,17324,16765,17282,16228,16479,15654,15871,15948,14850,13611,13428,12913,13618,14667,14413,14591,15205,15786,14966,15695,16635,16767,16538,16230,17269,16037,16479,16941,16569,16021,14966,14154,15043,14371,14777,14805,13730,14078,14026,14213,13059,12984,12236,10954,11636,11337,11039,9972,10802,11329,11884,11284,11458,11103,10757,11148,11190,10874,10611,10300,9803,9175,9693,9678,9084,9241,8910,9359,9265,8820,8574,8335,9054,9428,9957,10497,9549,10269,10381,10753,10719,10220,10107,10663,11103,9862,9934,9535,9177,9226,9006,8752,8392,8691,8556,8745,7803,7713,7674,7389,7545,7571,7701,7265,7274,7257,7171,7016,7521,7317,7497,7479,7884,7500,7691,7881,8753,8687,9119,8360,7937,7952,7867,7902,7664,7768,7757,7859,7574,7544,7286,7096,7458,7399,7411,7526,7834,7884,7501,7771,7889,7910,7724,7546,7597,7554,7565,7341,7236,7357,7080,7118,7172,7063,7273,7193,7367,6902,6962,6944,6949,7159,7055,7105,7014,7051,6738,6464,6301,6002,5673,5699,5647,5876,5887,6152,6539,6917,7077,6750,6825,6661,6583,6710,6753,6553,6475,6463,6505,6283,6276,6241,6228,6177,6321,6596,6849,6719,6609,6399,6106,5991,5892,5732,5680,5510,5711,6330,6162]}</script>
+<script>
+'use strict';
+/* =====================================================================
+   MOONSHOT — an origami rocket flight over the real PLS price chart.
+   Single file, vanilla JS + Canvas 2D. Part of Ching Ching (chingching.xyz).
+   ===================================================================== */
+
+/* ---------------- config ---------------- */
+const API = 'https://pnj.chingching.xyz';
+const SEG = 90;              // world px per daily price point
+const DENSE = 4;             // heightmap sample step
+const BRIDGE = 10;           // interpolated points joining last day back to first
+const GRAVITY = 2300;
+const BASE_SPEED = 265, RAMP = 6.5, MAX_SPEED = 620;
+const PLAYER_SX = 0.30;      // player screen x as fraction of width
+const PLAYER_R = 15;         // collision radius
+const qs = new URLSearchParams(location.search);
+const EMBED = qs.get('embed') === '1';
+const ENTRY = qs.get('entry') || (EMBED ? 'embedded' : 'standalone');
+
+/* ---------------- utils ---------------- */
+const clamp = (v,a,b)=> v<a?a:v>b?b:v;
+const lerp = (a,b,t)=> a+(b-a)*t;
+const TAU = Math.PI*2;
+function mulberry32(seed){ return function(){ seed|=0; seed = seed+0x6D2B79F5|0; let t = Math.imul(seed^seed>>>15, 1|seed); t = t+Math.imul(t^t>>>7, 61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function rgbLerp(c1,c2,t){ return [0,1,2].map(i=>Math.round(lerp(c1[i],c2[i],t))); }
+const rgbStr = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+function fmtPrice(p){ if(p>=0.001) return '$'+p.toFixed(4); const s=p.toExponential(2); return '$'+p.toFixed(8).replace(/0+$/,''); }
+function el(id){ return document.getElementById(id); }
+
+/* ---------------- canvas ---------------- */
+const canvas = el('game'), mainCtx = canvas.getContext('2d');
+let ctx = mainCtx;   // reassignable so drawOnto() can render the same art into other canvases
+let W=0, H=0, DPR=1;
+function resize(){
+  W = window.innerWidth; H = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio||1, W > 1700 ? 1.5 : 2);   // cap buffer size on big displays
+  canvas.width = Math.round(W*DPR); canvas.height = Math.round(H*DPR);
+  canvas.style.width = W+'px'; canvas.style.height = H+'px';   // canvas is replaced: inset:0 alone won't size it
+  mainCtx.setTransform(DPR,0,0,DPR,0,0);
+  if (terrain) buildGeometry();
+}
+window.addEventListener('resize', resize);
+
+/* =====================================================================
+   TERRAIN — daily PLS/USD closes -> log-normalized -> Catmull-Rom heightmap
+   ===================================================================== */
+let terrain = null;   // { norm[], prices[], startDay, dateDay, n, worldLen, hs Float32Array }
+
+function buildTerrain(data){
+  const prices = data.prices;                     // nano-USD ints
+  const n = prices.length;
+  const logs = prices.map(p=>Math.log(Math.max(p,1)));
+  let lo=Infinity, hi=-Infinity;
+  for (const v of logs){ if(v<lo)lo=v; if(v>hi)hi=v; }
+  const norm = logs.map(v=>(v-lo)/(hi-lo||1));    // 0 = cheapest, 1 = ATH
+  // bridge: smooth join from the last point back to the first (seamless wrap)
+  for (let k=1; k<=BRIDGE; k++){
+    const t = k/(BRIDGE+1);
+    norm.push(lerp(norm[n-1], norm[0], t*t*(3-2*t)));
+  }
+  terrain = {
+    norm, n, nWrap: norm.length,
+    prices, startDay: data.startDay, dateDay: Math.floor(data.date/86400),
+    worldLen: (norm.length)*SEG, hs: null, top:0, bottom:0,
+  };
+  buildGeometry();
+  computeWeatherMap();
+}
+
+function catmull(p0,p1,p2,p3,t){
+  const t2=t*t, t3=t2*t;
+  return 0.5*((2*p1)+(-p0+p2)*t+(2*p0-5*p1+4*p2-p3)*t2+(-p0+3*p1-3*p2+p3)*t3);
+}
+
+function buildGeometry(){
+  const t = terrain, N = t.nWrap, norm = t.norm;
+  t.top = H*0.30; t.bottom = H*0.82;
+  const m = Math.floor(t.worldLen/DENSE)+2;
+  const hs = new Float32Array(m);
+  const at = i => norm[((i%N)+N)%N];
+  for (let j=0;j<m;j++){
+    const x = j*DENSE, f = x/SEG, i = Math.floor(f), tt = f-i;
+    const v = catmull(at(i-1), at(i), at(i+1), at(i+2), tt);
+    hs[j] = t.bottom - (t.bottom-t.top)*clamp(v,-0.15,1.15);
+  }
+  t.hs = hs;
+}
+
+function wrapX(x){ const L=terrain.worldLen; x%=L; if(x<0)x+=L; return x; }
+function groundY(x){
+  const t=terrain, j=wrapX(x)/DENSE, i=Math.floor(j), f=j-i, hs=t.hs;
+  const a=hs[Math.min(i,hs.length-1)], b=hs[Math.min(i+1,hs.length-1)];
+  return a+(b-a)*f;
+}
+function groundSlope(x){ return (groundY(x+7)-groundY(x-7))/14; }
+function dayIndexAt(x){ const i=Math.floor(wrapX(x)/SEG); return i<terrain.n ? i : -1; }
+
+/* =====================================================================
+   WEATHER — derived from real chart sentiment, deterministic per course
+   ===================================================================== */
+// states: 0 sun, 1 rain, 2 snow, 3 storm
+const WEATHER = [
+  { name:'sun',   sky:[[253,246,227],[248,236,205]], mount:[236,225,200], sun:1, rain:0, snow:0, dark:0 },
+  { name:'rain',  sky:[[226,231,239],[206,214,226]], mount:[204,211,222], sun:0, rain:1, snow:0, dark:0.12 },
+  { name:'snow',  sky:[[241,244,250],[226,232,242]], mount:[221,228,239], sun:0, rain:0, snow:1, dark:0.04 },
+  { name:'storm', sky:[[187,190,203],[157,161,178]], mount:[168,171,187], sun:0, rain:1.6, snow:0, dark:0.30 },
+];
+let weatherMap = null;
+
+function computeWeatherMap(){
+  // Weather tracks the DIRECTION of the chart you are flying over:
+  // pumping = sunshine, dipping = rain, crashing = storm, crabbing = snow.
+  const p = terrain.prices, n = terrain.n, w = new Int8Array(terrain.nWrap);
+  for (let i=0;i<n;i++){
+    const t1 = p[i]/p[Math.max(0,i-1)] - 1;       // 1-day move
+    const t3 = p[i]/p[Math.max(0,i-3)] - 1;       // 3-day move
+    if (t1 <= -0.12 || t3 <= -0.18) w[i] = 3;     // crash → storm
+    else if (t1 <= -0.03 || t3 <= -0.06) w[i] = 1;// dip → rain
+    else if (t1 >= 0.03 || t3 >= 0.08) w[i] = 0;  // pump → sun
+    else w[i] = 2;                                // sideways → snow
+  }
+  for (let i=n;i<terrain.nWrap;i++) w[i]=w[n-1];
+  // smooth: remove 1-day flickers
+  for (let i=1;i<w.length-1;i++) if (w[i]!==w[i-1] && w[i]!==w[i+1]) w[i]=w[i-1];
+  weatherMap = w;
+}
+
+const wx = { cur:0, prev:0, t:1, flash:0, nextBolt:0 };
+function weatherAt(x){ const i=Math.floor(wrapX(x)/SEG); return weatherMap[Math.min(i,weatherMap.length-1)]; }
+function updateWeather(dt){
+  const target = weatherAt(camX + W*0.6);
+  if (target !== wx.cur){ wx.prev = wx.cur; wx.cur = target; wx.t = 0; }
+  wx.t = Math.min(1, wx.t + dt/2.2);
+  if (wx.cur===3){ // storm lightning
+    wx.nextBolt -= dt;
+    if (wx.nextBolt<=0){ wx.flash=0.9; wx.nextBolt=2.5+Math.random()*4; sfx('thunder'); }
+  }
+  wx.flash = Math.max(0, wx.flash - dt*2.2);
+}
+function wmix(key){ return lerp(WEATHER[wx.prev][key], WEATHER[wx.cur][key], wx.t); }
+function wmixCol(key,idx){ return rgbLerp(WEATHER[wx.prev][key][idx]||WEATHER[wx.prev][key], WEATHER[wx.cur][key][idx]||WEATHER[wx.cur][key], wx.t); }
+
+/* particles: rain / snow / motes, all little paper bits */
+const parts = [];
+function updateParticles(dt, speed){
+  const rain = wmix('rain'), snow = wmix('snow');
+  const want = Math.round(rain*90 + snow*70);
+  while (parts.length < want) parts.push(newPart(rain>snow));
+  while (parts.length > want) parts.pop();
+  for (const p of parts){
+    p.x -= (p.vx + speed*p.par)*dt; p.y += p.vy*dt; p.rot += p.vr*dt;
+    if (p.y > H+10 || p.x < -20){ Object.assign(p, newPart(rain>snow)); p.y = -10; }
+  }
+}
+function newPart(isRain){
+  return isRain
+    ? { rain:true, x:Math.random()*(W+100), y:Math.random()*H, vx:120, vy:620+Math.random()*160, vr:0, rot:0, par:0.55, l:10+Math.random()*7 }
+    : { rain:false, x:Math.random()*(W+100), y:Math.random()*H, vx:20+Math.random()*30, vy:55+Math.random()*45, vr:2+Math.random()*3, rot:Math.random()*TAU, par:0.3, s:2.5+Math.random()*2.5 };
+}
+function drawParticles(){
+  const rainT = wmix('rain');
+  ctx.save();
+  for (const p of parts){
+    if (p.rain){
+      ctx.strokeStyle = `rgba(120,134,160,${0.35*Math.min(rainT,1)})`;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+4, p.y+p.l); ctx.stroke();
+    } else {
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s);
+      ctx.fillStyle = 'rgba(205,214,228,0.7)';
+      ctx.fillRect(-p.s/2,-p.s/2,p.s/2,p.s);
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+/* =====================================================================
+   PAPER RENDER HELPERS — flat polys + fold facets + soft shadows
+   ===================================================================== */
+function poly(pts, fill, stroke){
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+  if (fill){ ctx.fillStyle=fill; ctx.fill(); }
+  if (stroke){ ctx.strokeStyle=stroke; ctx.lineWidth=1; ctx.stroke(); }
+}
+function shade(hex, f){ // f<0 darken, f>0 lighten
+  const n=parseInt(hex.slice(1),16), r=n>>16&255, g=n>>8&255, b=n&255;
+  const t = f<0 ? 0 : 255, a = Math.abs(f);
+  return `rgb(${Math.round(lerp(r,t,a))},${Math.round(lerp(g,t,a))},${Math.round(lerp(b,t,a))})`;
+}
+function softShadow(x, y, w){
+  ctx.fillStyle='rgba(58,54,48,0.13)';
+  ctx.beginPath(); ctx.ellipse(x, y, w, w*0.28, 0, 0, TAU); ctx.fill();
+}
+
+/* =====================================================================
+   COURSE — obstacles & collectibles, seeded from the terrain date
+   ===================================================================== */
+let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
+const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD', bomb:'a Bomb',
+                   wall:'a Sell Wall', sec:'the SEC', notice:'an Interpol Red Notice' };
+
+function spawnCourse(){
+  const rng = mulberry32(terrain.dateDay*2654435761 % 2147483647);
+  items = [];
+  let x = 1000;
+  const end = terrain.worldLen - SEG*(BRIDGE+1);
+  while (x < end){
+    const r = rng();
+    if (r < 0.52){                                  // collectibles
+      const k = rng();
+      if (k < 0.55){                                // coin trail
+        const cnt = 3+Math.floor(rng()*4);
+        const arc = rng() < 0.4;
+        for (let i2=0;i2<cnt;i2++){
+          const dy = 46 + (arc ? Math.sin((i2/(cnt-1))*Math.PI)*55 : 0);
+          items.push({ type:'coin', x:x+i2*46, dy, r:13, val:10 });
+        }
+        x += cnt*46;
+      } else if (k < 0.85){
+        items.push({ type:'gcandle', x, dy:38, r:16, val:25 });
+      } else {
+        items.push({ type:'diamond', x, dy:148, r:17, val:50 });
+      }
+    } else {                                        // obstacles
+      const k = rng();
+      if (k < 0.22)      items.push({ type:'rock',    x, dy:16, r:19, ob:true });
+      else if (k < 0.42) items.push({ type:'rcandle', x, dy:30, r:18, ob:true });
+      else if (k < 0.60) items.push({ type:'cloud',   x, dy:118, r:24, ob:true });
+      else if (k < 0.74) items.push({ type:'bomb',    x, dy:15, r:16, ob:true });
+      else if (k < 0.87) items.push({ type:'sec',     x, dy:130 + rng()*60, r:21, ob:true });
+      else               items.push({ type:'notice',  x, dy:75 + rng()*50,  r:19, ob:true });
+    }
+    x += 270 + rng()*330;
+  }
+  // high-altitude hazard: sell walls hang from the sky on a cadence that makes
+  // camping the top of the screen a death sentence. Wall length is a FRACTION
+  // of the local ceiling-to-chart clearance, so a flyable gap always remains
+  // even over all-time-high peaks (and survives resizes).
+  let hx = 1500;
+  while (hx < end){
+    items.push({ type:'wall', x:hx, frac:0.22 + rng()*0.20, w:38, ob:true, high:true });
+    hx += 560 + rng()*480;
+  }
+  for (const it of items) it.hit = false;
+}
+function resetCourse(){ for (const it of items) it.hit = false; }
+
+/* sky-hazard geometry: fraction of local ceiling→chart clearance */
+function wallBottom(it){ return 34 + (groundY(it.x) - 34) * it.frac; }
+
+/* item drawing (terrain-relative for ground items, clearance-relative for sky hazards) */
+function drawItem(it, sx){
+  const y = it.type==='wall' ? 0 : groundY(it.x) - it.dy;
+  ctx.save(); ctx.translate(sx, y);
+  switch(it.type){
+    case 'wall': {
+      const w = it.w, b = wallBottom(it);
+      poly([[-w/2,0],[w/2,0],[w/2,b],[0,b+14],[-w/2,b]], '#C0392B');
+      poly([[0,0],[w/2,0],[w/2,b],[0,b+14]], shade('#C0392B',-0.18));
+      // brick creases
+      ctx.strokeStyle='rgba(58,54,48,0.25)'; ctx.lineWidth=1;
+      for (let yy=22; yy<b-6; yy+=24){
+        ctx.beginPath(); ctx.moveTo(-w/2,yy); ctx.lineTo(w/2,yy); ctx.stroke();
+      }
+      ctx.fillStyle='#FBF8F1';
+      ctx.font='900 11px -apple-system, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.save(); ctx.translate(0, b*0.45); ctx.rotate(-Math.PI/2);
+      ctx.fillText('SELL', 0, 0);
+      ctx.restore();
+      break;
+    }
+    case 'sec': {
+      // the SEC: a flying paper subpoena with a red seal
+      const b = Math.sin(now*1.7 + it.x*0.6)*6;
+      ctx.translate(0,b); ctx.rotate(Math.sin(now*1.2 + it.x)*0.08);
+      poly([[-15,-20],[15,-20],[15,20],[-15,20]], '#FDFCF8', 'rgba(58,54,48,0.35)');
+      poly([[7,-20],[15,-20],[15,-12]], '#E6DFCE');           // folded corner
+      ctx.fillStyle='#1F3A66'; ctx.font='900 10px -apple-system, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('SEC', -1, -11);
+      ctx.strokeStyle='rgba(58,54,48,0.3)'; ctx.lineWidth=1.4;
+      ctx.beginPath();
+      ctx.moveTo(-10,-2); ctx.lineTo(10,-2);
+      ctx.moveTo(-10,3);  ctx.lineTo(10,3);
+      ctx.moveTo(-10,8);  ctx.lineTo(4,8);
+      ctx.stroke();
+      ctx.fillStyle='#C0392B'; ctx.beginPath(); ctx.arc(8,14,3.5,0,TAU); ctx.fill();  // seal
+      break;
+    }
+    case 'notice': {
+      // Interpol red notice: red-banded wanted card with a mugshot silhouette
+      const b = Math.sin(now*1.9 + it.x*0.4)*6;
+      ctx.translate(0,b); ctx.rotate(Math.sin(now*1.4 + it.x)*0.06);
+      poly([[-14,-19],[14,-19],[14,19],[-14,19]], '#FDFCF8', 'rgba(58,54,48,0.35)');
+      poly([[-14,-19],[14,-19],[14,-6],[-14,-6]], '#C0392B');
+      poly([[0,-19],[14,-19],[14,-6],[0,-6]], shade('#C0392B',-0.12));
+      ctx.fillStyle='#FDFCF8'; ctx.font='900 7.5px -apple-system, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('RED', 0, -15.5);
+      ctx.fillText('NOTICE', 0, -9);
+      // mugshot silhouette + dossier lines
+      ctx.fillStyle='#B9B2A4';
+      ctx.beginPath(); ctx.arc(-6,2,3.2,0,TAU); ctx.fill();
+      poly([[-10.5,11],[-1.5,11],[-3,5.5],[-9,5.5]], '#B9B2A4');
+      ctx.strokeStyle='rgba(58,54,48,0.3)'; ctx.lineWidth=1.3;
+      ctx.beginPath();
+      ctx.moveTo(2,4); ctx.lineTo(10,4);
+      ctx.moveTo(2,8); ctx.lineTo(10,8);
+      ctx.moveTo(2,12); ctx.lineTo(10,12);
+      ctx.stroke();
+      break;
+    }
+    case 'coin': {
+      const b = Math.sin(now*3 + it.x)*3;
+      ctx.translate(0,b);
+      hexPoly(13, '#F2C14E'); // gold paper hex
+      poly([[-13,0],[-6.5,-11.3],[6.5,-11.3],[13,0],[0,0]], shade('#F2C14E',-0.13));
+      pulseLine(7, '#8A6A1B');
+      break;
+    }
+    case 'gcandle': candle('#3FA35E', 20, 34); break;
+    case 'diamond': {
+      const b = Math.sin(now*2 + it.x)*4;
+      ctx.translate(0,b);
+      const D = '#8FD0E8';
+      // origami gem: faceted crown + pavilion ("diamond hands")
+      poly([[-16,-4],[-8,-15],[8,-15],[16,-4]], D, 'rgba(58,54,48,0.25)');
+      poly([[-8,-15],[8,-15],[0,-4]], shade(D,0.3));
+      poly([[-16,-4],[0,-4],[0,17]], shade(D,-0.06));
+      poly([[0,-4],[16,-4],[0,17]], shade(D,-0.22));
+      ctx.strokeStyle='rgba(58,54,48,0.25)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(-16,-4); ctx.lineTo(0,17); ctx.lineTo(16,-4); ctx.stroke();
+      // sparkle
+      ctx.strokeStyle='rgba(255,255,255,0.95)'; ctx.lineWidth=1.6;
+      ctx.beginPath();
+      ctx.moveTo(-7,-10); ctx.lineTo(-3,-10);
+      ctx.moveTo(-5,-12); ctx.lineTo(-5,-8);
+      ctx.stroke();
+      break;
+    }
+    case 'rock': {
+      poly([[-20,16],[-16,-6],[-6,-15],[8,-13],[19,-2],[21,16]], '#B9B2A4');
+      poly([[-6,-15],[8,-13],[4,16],[-8,16]], shade('#B9B2A4',-0.14));
+      poly([[8,-13],[19,-2],[21,16],[4,16]], shade('#B9B2A4',-0.24));
+      // little rolled rug on top: the rug pull
+      ctx.fillStyle = '#B23F1E';
+      ctx.fillRect(-12,-21,22,6);
+      ctx.fillStyle = shade('#B23F1E',-0.25);
+      ctx.fillRect(-12,-21,22,2.4);
+      break;
+    }
+    case 'rcandle': candle('#D6453D', 22, 52, true); break;
+    case 'cloud': {
+      const b = Math.sin(now*1.6 + it.x*0.7)*5;
+      ctx.translate(0,b);
+      poly([[-30,8],[-24,-6],[-12,-14],[4,-16],[18,-10],[27,-1],[24,10],[-24,10]], '#9AA0AC');
+      poly([[-12,-14],[4,-16],[8,10],[-14,10]], shade('#9AA0AC',-0.12));
+      ctx.fillStyle = '#5A6070';
+      ctx.font = '900 11px -apple-system, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('FUD', -1, -1);
+      break;
+    }
+    case 'bomb': {
+      poly([[-13,4],[-9,-9],[0,-14],[9,-9],[13,4],[7,13],[-7,13]], '#3A3630');
+      poly([[0,-14],[9,-9],[13,4],[0,6]], shade('#3A3630',0.14));
+      ctx.strokeStyle = '#8A6A1B'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(0,-14); ctx.quadraticCurveTo(5,-22,10,-20); ctx.stroke();
+      const f = Math.sin(now*14)*0.5+0.5;
+      poly([[10,-20],[14-f*2,-26],[16,-19]], f>0.5?'#FFB627':'#E4572E');
+      break;
+    }
+  }
+  ctx.restore();
+}
+function hexPoly(r, col){
+  const pts=[]; for(let i=0;i<6;i++){ const a=TAU*i/6 - Math.PI/2; pts.push([Math.cos(a)*r, Math.sin(a)*r]); }
+  poly(pts, col);
+}
+function pulseLine(w, col){ // little heartbeat crease
+  ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.lineJoin='miter';
+  ctx.beginPath();
+  ctx.moveTo(-w,2); ctx.lineTo(-w*0.35,2); ctx.lineTo(-w*0.15,-4); ctx.lineTo(w*0.1,6); ctx.lineTo(w*0.3,2); ctx.lineTo(w,2);
+  ctx.stroke();
+}
+function candle(col, w, h, evil){
+  // candlestick: body + wick, paper facets
+  ctx.strokeStyle = shade(col,-0.3); ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(0,-h/2-9); ctx.lineTo(0,h/2+6); ctx.stroke();
+  poly([[-w/2,-h/2],[w/2,-h/2],[w/2,h/2],[-w/2,h/2]], col);
+  poly([[0,-h/2],[w/2,-h/2],[w/2,h/2],[0,h/2]], shade(col,-0.15));
+  poly([[-w/2,-h/2],[0,-h/2],[-w/2+4,-h/2+7]], shade(col,0.25));
+  if (evil){ // angry eyes on the red candle
+    ctx.fillStyle='#fff';
+    ctx.fillRect(-7,-10,5,5); ctx.fillRect(3,-10,5,5);
+    ctx.fillStyle='#3A3630';
+    ctx.fillRect(-5.5,-8.5,2.5,2.5); ctx.fillRect(4.5,-8.5,2.5,2.5);
+  }
+}
+
+/* =====================================================================
+   CHARACTERS — five origami variants with pluggable controllers
+   ===================================================================== */
+const VARIANTS = {
+  rocket: { name:'Rocket', desc:'Hold to boost. Touch the chart = rekt.', ctrl:'rocket' },
+};
+const variantKey = 'rocket';
+
+const player = { y:0, vy:0, grounded:false, angle:0, spd:0, anim:0 };
+
+function resetPlayer(){
+  const px = camX + W*PLAYER_SX;
+  player.vy = 0; player.angle = 0; player.anim = 0;
+  player.grounded = false;
+  player.y = groundY(px) - 130;
+  player.spd = BASE_SPEED;
+}
+
+function updatePlayer(dt){
+  const px = camX + W*PLAYER_SX;
+  const gy = groundY(px);
+  player.anim += dt;
+  // hold = thrust up, release = dive. Touching the chart ends the run.
+  if (input.held) player.vy -= 3600*dt; else player.vy += 1600*dt;
+  player.vy = clamp(player.vy, -480, 640);
+  player.y += player.vy*dt;
+  if (player.y < 34){ player.y = 34; player.vy = Math.max(player.vy,0); }
+  if (player.y >= gy - 8) return die('the chart');
+  return null;
+}
+
+/* ---- rocket art (local frame: origin at base, facing +x) ---- */
+function drawCharacter(key, t, grounded, vy, angle, forCard){
+  const A='#E4572E';
+  ctx.save();
+  ctx.rotate((angle||0) + 0.15 + (vy||0)*0.0006);
+  // flame while boosting
+  if (input.held && state==='playing' && !forCard){
+    const f = Math.random();
+    poly([[-16,-10],[-30-f*10,-13],[-16,-16]], '#FFB627');
+    poly([[-16,-11],[-24-f*6,-13],[-16,-15]], '#E4572E');
+  } else if (forCard){
+    poly([[-16,-10],[-28,-13],[-16,-16]], '#FFB627');
+  }
+  // body
+  poly([[-16,-6],[8,-6],[18,-13],[8,-20],[-16,-20]], '#F0EDE4', 'rgba(58,54,48,0.3)');
+  poly([[-16,-6],[8,-6],[8,-13],[-16,-13]], shade('#F0EDE4',-0.1));
+  poly([[8,-6],[18,-13],[8,-20],[8,-6]], A);        // nose
+  poly([[-16,-6],[-8,-6],[-14,2],[-20,2]], A);       // fin low
+  poly([[-16,-20],[-8,-20],[-14,-28],[-20,-28]], shade(A,-0.15)); // fin high
+  ctx.fillStyle='#7FB4D9';
+  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.fill();
+  ctx.strokeStyle=shade('#F0EDE4',-0.25); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.stroke();
+  ctx.restore();
+}
+
+/* =====================================================================
+   AUDIO — WebAudio-synthesized paper foley, no files
+   ===================================================================== */
+let AC=null, sharedNoise=null, muted = localStorage.getItem('pnj_mute')==='1';
+function audio(){
+  if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
+  if (AC && AC.state==='suspended') AC.resume();
+  if (AC && !sharedNoise){
+    // one 2s noise buffer, allocated once; every paper sound plays a random slice
+    sharedNoise = AC.createBuffer(1, AC.sampleRate*2, AC.sampleRate);
+    const d = sharedNoise.getChannelData(0);
+    for (let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  }
+  return AC;
+}
+function sfx(name){
+  if (muted) return;
+  const ac = audio(); if(!ac) return;
+  const t0 = ac.currentTime;
+  const g = ac.createGain(); g.connect(ac.destination);
+  const noise = (dur, type, f0, f1, vol)=>{
+    const src = ac.createBufferSource(); src.buffer = sharedNoise;
+    const flt = ac.createBiquadFilter(); flt.type=type;
+    flt.frequency.setValueAtTime(f0,t0); flt.frequency.exponentialRampToValueAtTime(f1,t0+dur);
+    src.connect(flt); flt.connect(g);
+    g.gain.setValueAtTime(vol,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+dur);
+    src.start(t0, Math.random()*(2-dur), dur);
+  };
+  const ping = (f, dur, vol, delay=0)=>{
+    const o = ac.createOscillator(); o.type='triangle'; o.frequency.value=f;
+    const og = ac.createGain(); o.connect(og); og.connect(ac.destination);
+    og.gain.setValueAtTime(0.0001,t0+delay);
+    og.gain.exponentialRampToValueAtTime(vol,t0+delay+0.012);
+    og.gain.exponentialRampToValueAtTime(0.001,t0+delay+dur);
+    o.start(t0+delay); o.stop(t0+delay+dur+0.02);
+  };
+  switch(name){
+    case 'jump':   noise(0.12,'bandpass',900,2600,0.5); break;                 // paper fwip
+    case 'land':   noise(0.06,'lowpass',900,300,0.18); break;
+    case 'collect':noise(0.05,'highpass',2000,4000,0.25); ping(1180+Math.random()*220,0.16,0.22); break;
+    case 'moon':   noise(0.05,'highpass',2000,4000,0.25); ping(1320,0.14,0.2); ping(1760,0.22,0.22,0.07); break;
+    case 'crash': {
+      noise(0.55,'lowpass',1400,120,0.7);                                      // crumple
+      const o = ac.createOscillator(); o.type='sawtooth';
+      o.frequency.setValueAtTime(190,t0); o.frequency.exponentialRampToValueAtTime(46,t0+0.4);
+      const og=ac.createGain(); o.connect(og); og.connect(ac.destination);
+      og.gain.setValueAtTime(0.22,t0); og.gain.exponentialRampToValueAtTime(0.001,t0+0.45);
+      o.start(t0); o.stop(t0+0.5);
+      ping(392,0.3,0.15,0.5); ping(311,0.3,0.15,0.68); ping(233,0.5,0.15,0.86); // sad jingle
+      break;
+    }
+    case 'thunder': noise(1.1,'lowpass',300,60,0.35); break;
+    case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
+    case 'tick':    ping(660,0.14,0.2); break;
+    case 'go':      ping(880,0.12,0.22); ping(1320,0.25,0.25,0.1); break;
+  }
+}
+function setMute(m){
+  muted = m; localStorage.setItem('pnj_mute', m?'1':'0');
+  el('muteBtn').innerHTML = m ? '&#128263;' : '&#128266;';
+}
+
+/* =====================================================================
+   ANALYTICS — self-hosted, queued in localStorage, flushed in batches
+   ===================================================================== */
+const clientId = (()=>{ let id = localStorage.getItem('pnj_cid'); if(!id){ id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)+Date.now()); localStorage.setItem('pnj_cid', id); } return id; })();
+const platform = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+function track(event, props){
+  try {
+    const q = JSON.parse(localStorage.getItem('pnj_evq')||'[]');
+    q.push({ event, props: props||{}, ts: Date.now(), client_id: clientId, platform, entry_point: ENTRY });
+    localStorage.setItem('pnj_evq', JSON.stringify(q.slice(-200)));
+  } catch(e){}
+}
+function flushEvents(useBeacon){
+  let q;
+  try { q = JSON.parse(localStorage.getItem('pnj_evq')||'[]'); } catch(e){ return; }
+  if (!q.length) return;
+  const body = JSON.stringify({ events:q });
+  localStorage.setItem('pnj_evq','[]');
+  if (useBeacon && navigator.sendBeacon){
+    if (!navigator.sendBeacon(API+'/events', new Blob([body],{type:'application/json'})))
+      localStorage.setItem('pnj_evq', JSON.stringify(q));
+  } else {
+    fetch(API+'/events', { method:'POST', headers:{'Content-Type':'application/json'}, body })
+      .catch(()=> localStorage.setItem('pnj_evq', JSON.stringify(q)));
+  }
+}
+setInterval(()=>flushEvents(false), 15000);
+document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState==='hidden') flushEvents(true); });
+
+/* =====================================================================
+   SCORES / LEADERBOARD
+   ===================================================================== */
+let best = parseInt(localStorage.getItem('pnj_best')||'0',10) || 0;
+function playerName(){ return (localStorage.getItem('pnj_name')||'').trim(); }
+
+async function submitScore(run){
+  const name = playerName();
+  try {
+    await fetch(API+'/scores', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        client_id: clientId, name: name || 'anon',
+        score: run.score, distance: run.distance, duration_ms: run.durationMs,
+        variant: variantKey, day: terrain.dateDay,
+      }),
+    });
+  } catch(e){}
+}
+let boardPeriod = 'daily';
+async function loadBoard(){
+  const list = el('boardList');
+  list.innerHTML = '<div class="empty">Loading&hellip;</div>';
+  try {
+    const r = await fetch(`${API}/scores?period=${boardPeriod}&client_id=${encodeURIComponent(clientId)}`);
+    const j = await r.json();
+    if (!j.scores || !j.scores.length){ list.innerHTML = '<div class="empty">No scores yet. Set the first one.</div>'; return; }
+    list.innerHTML = '';
+    j.scores.forEach((s,i)=>{
+      const li = document.createElement('li');
+      if (s.client_id === clientId) li.className='me';
+      li.innerHTML = `<span class="rank">${i+1}</span><span class="bname"></span><span class="bscore">${Number(s.score).toLocaleString()}</span>`;
+      li.querySelector('.bname').textContent = s.name || 'anon';
+      list.appendChild(li);
+    });
+    if (j.me && j.me.rank > j.scores.length){
+      const li = document.createElement('li'); li.className='me';
+      li.innerHTML = `<span class="rank">${j.me.rank}</span><span class="bname"></span><span class="bscore">${Number(j.me.score).toLocaleString()}</span>`;
+      li.querySelector('.bname').textContent = (playerName()||'you');
+      list.appendChild(li);
+    }
+  } catch(e){
+    list.innerHTML = '<div class="empty">Leaderboard unreachable right now.</div>';
+  }
+}
+
+/* =====================================================================
+   SHARE CARD — 1200x630 canvas render
+   ===================================================================== */
+async function shareScore(run){
+  track('share_tapped', { score: run.score, platform_shared_to: platform==='mobile'?'sheet':'twitter' });
+  const c = document.createElement('canvas'); c.width=1200; c.height=630;
+  const x = c.getContext('2d');
+  // paper background
+  const grad = x.createLinearGradient(0,0,0,630);
+  grad.addColorStop(0,'#FDF6E3'); grad.addColorStop(1,'#F2E9D3');
+  x.fillStyle=grad; x.fillRect(0,0,1200,630);
+  // terrain silhouette from the real chart
+  x.fillStyle='#E8DFC8';
+  x.beginPath(); x.moveTo(0,630);
+  const N = terrain.n;
+  for (let i=0;i<=120;i++){
+    const idx = Math.floor(i/120*(N-1));
+    x.lineTo(i/120*1200, 620 - terrain.norm[idx]*230);
+  }
+  x.lineTo(1200,630); x.closePath(); x.fill();
+  x.fillStyle='#DFD4B8';
+  x.beginPath(); x.moveTo(0,630);
+  for (let i=0;i<=120;i++){
+    const idx = Math.floor((0.3+i/120*0.7)*(N-1));
+    x.lineTo(i/120*1200, 640 - terrain.norm[idx]*160);
+  }
+  x.lineTo(1200,630); x.closePath(); x.fill();
+  // fold corner
+  x.fillStyle='#EAE3D2'; x.beginPath(); x.moveTo(1200,0); x.lineTo(1200-70,0); x.lineTo(1200,70); x.closePath(); x.fill();
+  // text
+  x.fillStyle='#2E2A24'; x.textAlign='left';
+  x.font='900 44px -apple-system, Helvetica, sans-serif';
+  x.fillText('MOONSHOT', 70, 110);
+  x.fillStyle='#E4572E'; x.font='800 22px -apple-system, Helvetica, sans-serif';
+  x.fillText('I FLEW THE REAL PLS CHART', 70, 152);
+  x.fillStyle='#2E2A24'; x.font='900 170px -apple-system, Helvetica, sans-serif';
+  x.fillText(run.score.toLocaleString(), 62, 350);
+  x.fillStyle='rgba(58,54,48,0.6)'; x.font='700 26px -apple-system, Helvetica, sans-serif';
+  x.fillText(`${run.distance.toLocaleString()}m through PLS history`, 70, 400);
+  // character
+  x.save(); x.translate(950,430); x.scale(4.4,4.4);
+  drawOnto(x, ()=> drawCharacter(variantKey, 0.35, true, 0, variantKey==='rocket'?-0.1:0, true));
+  x.restore();
+  // CTA
+  x.fillStyle='#E4572E'; x.fillRect(70,470,520,86);
+  x.fillStyle='#B23F1E'; x.fillRect(70,556,520,8);
+  x.fillStyle='#fff'; x.font='900 30px -apple-system, Helvetica, sans-serif';
+  x.fillText('PLAY ON CHING CHING', 100, 512);
+  x.font='700 21px -apple-system, Helvetica, sans-serif';
+  x.fillText('chingching.xyz/moonshot', 100, 543);
+
+  const blob = await new Promise(res=>c.toBlob(res,'image/png'));
+  const file = new File([blob], 'moonshot-score.png', { type:'image/png' });
+  const text = `I scored ${run.score.toLocaleString()} flying the real PLS chart in Moonshot 🚀📈\n\nPlay: https://chingching.xyz/moonshot/`;
+  if (navigator.canShare && navigator.canShare({ files:[file] })){
+    try { await navigator.share({ files:[file], text }); return; } catch(e){ if (e.name==='AbortError') return; }
+  }
+  // desktop: download + tweet intent
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'pump-and-jump-score.png'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+  window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(text), '_blank');
+}
+// temporarily point the shared drawing helpers at another 2d context
+function drawOnto(target, fn){
+  const saved = ctx; ctx = target; try { fn(); } finally { ctx = saved; }
+}
+
+/* =====================================================================
+   INPUT
+   ===================================================================== */
+const input = { held:false, pressed:false };
+function press(){
+  audio();
+  if (state==='playing'){ input.held=true; input.pressed=true; }
+  else if (state==='countdown'){ input.held=true; }              // pre-arm the boost
+  else if (state==='menu' && !panelOpen()) startRun();
+  else if (state==='dead' && overShown && !panelOpen()) restart();
+}
+function release(){ input.held=false; }
+function panelOpen(){ return !el('board').classList.contains('hidden'); }
+
+window.addEventListener('keydown', e=>{
+  if (e.code==='Space' || e.code==='ArrowUp'){
+    if (document.activeElement===el('pname')) return;
+    e.preventDefault(); if (!e.repeat) press();
+  }
+});
+window.addEventListener('keyup', e=>{ if (e.code==='Space'||e.code==='ArrowUp') release(); });
+canvas.addEventListener('pointerdown', e=>{ e.preventDefault(); press(); });
+window.addEventListener('pointerup', release);
+window.addEventListener('pointercancel', release);
+window.addEventListener('blur', release);
+
+/* =====================================================================
+   GAME STATE
+   ===================================================================== */
+let state = 'boot';          // boot | menu | countdown | playing | dead
+let camX = 0, runTime = 0, score = 0, coins = 0, runStartTs = 0, now = 0;
+let countdownT = 0, goT = 0;
+let deathBits = [];          // paper-shred particles on death
+let overShown = false;
+let lastRun = null;
+
+function scrollSpeed(){
+  return Math.min(MAX_SPEED, BASE_SPEED + runTime*RAMP);
+}
+
+function startRun(){
+  camX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
+  wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1;
+  resetCourse(); resetPlayer();
+  state = 'countdown'; countdownT = 3; goT = 0; overShown=false;
+  runStartTs = performance.now();
+  el('start').classList.add('hidden');
+  el('over').classList.add('hidden');
+  el('board').classList.add('hidden');
+  el('tapStart').classList.remove('hidden');
+  setTimeout(()=>el('tapStart').classList.add('hidden'), 2600);
+  track('game_started', {});
+  sfx('click');
+}
+
+function die(cause){
+  if (state!=='playing') return;
+  state = 'dead';
+  sfx('crash');
+  // paper shreds
+  const px = W*PLAYER_SX, py = player.y - 18;
+  for (let i=0;i<26;i++){
+    deathBits.push({ x:px, y:py, vx:(Math.random()-0.3)*420, vy:(Math.random()-0.75)*520, rot:Math.random()*TAU, vr:(Math.random()-0.5)*14, s:3+Math.random()*6, col: Math.random()<0.5?'#FAF7F0':'#E4572E' });
+  }
+  const distance = Math.round(camX/10);
+  lastRun = { score: Math.round(score), distance, durationMs: Math.round(performance.now()-runStartTs), cause };
+  const isBest = lastRun.score > best;
+  if (isBest){ best = lastRun.score; localStorage.setItem('pnj_best', String(best)); }
+  track('game_over', { score:lastRun.score, distance, run_duration_ms:lastRun.durationMs, obstacles_hit:cause });
+  submitScore(lastRun);
+  setTimeout(()=>{
+    el('finalScore').textContent = lastRun.score.toLocaleString();
+    el('deathCause').textContent = 'Taken out by ' + cause + '.';
+    el('statDist').textContent = distance.toLocaleString()+'m';
+    el('statCoins').textContent = coins;
+    el('statBest').textContent = best.toLocaleString();
+    el('newBest').style.visibility = isBest ? 'visible' : 'hidden';
+    el('pname').value = playerName();
+    el('nameStatus').textContent = playerName() ? '' : 'save a name to appear on the leaderboard';
+    el('nameStatus').style.color = playerName() ? '#3FA35E' : 'rgba(58,54,48,0.5)';
+    el('over').classList.remove('hidden');
+    overShown = true;
+  }, 650);
+}
+
+function restart(){
+  saveName();
+  startRun();
+}
+function saveName(){
+  const n = el('pname').value.trim().slice(0,16);
+  if (n) localStorage.setItem('pnj_name', n);
+  return n;
+}
+// Explicit save: stores locally AND renames every score already submitted
+// under this client_id (runs are auto-submitted as 'anon' before a name exists).
+async function saveNameAndSync(){
+  const n = saveName();
+  if (!n){ el('nameStatus').textContent = 'type a name first'; return; }
+  el('nameStatus').style.color = '#3FA35E';
+  el('nameStatus').textContent = 'saving…';
+  try {
+    const r = await fetch(API+'/name', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ client_id: clientId, name: n }),
+    });
+    el('nameStatus').textContent = r.ok ? '✓ leaderboard scores saved as "'+n+'"' : 'could not reach leaderboard';
+  } catch(e){
+    el('nameStatus').textContent = 'saved on this device (leaderboard offline)';
+  }
+}
+
+/* =====================================================================
+   UPDATE + RENDER
+   ===================================================================== */
+const skyCache = { key:'', g:null };
+let lastT = 0;
+function frame(ts){
+  requestAnimationFrame(frame);
+  if (!W || !H){ resize(); if (W && H) resetPlayer(); }   // heal zero-size boot (hidden/background tab)
+  const dt = Math.min(0.033, (ts-lastT)/1000 || 0.016);
+  lastT = ts; now = ts/1000;
+
+  if (state==='countdown'){
+    const prev = Math.ceil(countdownT);
+    countdownT -= dt;
+    if (Math.ceil(countdownT) !== prev && countdownT > 0) sfx('tick');
+    player.y = groundY(camX + W*PLAYER_SX) - 130 + Math.sin(now*3)*5;   // hover on the pad
+    updateWeather(dt); updateParticles(dt, 0);
+    if (countdownT <= 0){
+      state = 'playing'; goT = 0.7;
+      runStartTs = performance.now();
+      sfx('go');
+    }
+  } else if (state==='playing'){
+    runTime += dt;
+    goT = Math.max(0, goT - dt);
+    const spd = scrollSpeed();
+    camX += spd*dt;
+    if (camX >= terrain.worldLen){ camX -= terrain.worldLen; resetCourse(); }
+    score += spd*dt*0.02;
+    updatePlayer(dt);
+    if (state==='playing') checkCollisions();
+    updateWeather(dt);
+    updateParticles(dt, spd);
+  } else if (state==='dead'){
+    for (const b of deathBits){ b.vy += 1400*dt; b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt; }
+    updateWeather(dt); updateParticles(dt, 0);
+  } else {
+    updateWeather(dt); updateParticles(dt, 40);
+    if (state==='menu' && terrain) player.y = groundY(camX + W*PLAYER_SX) - 120 + Math.sin(now*1.6)*8;  // idle hover
+  }
+  input.pressed = false;
+  render();
+}
+
+function checkCollisions(){
+  const px = camX + W*PLAYER_SX;
+  const pyC = player.y - 13;                       // rocket body centre
+  const lo = px-260, hiX = px+60;
+  for (const it of items){
+    if (it.x < lo || it.x > hiX || it.hit) continue;
+    if (it.type === 'wall'){
+      if (Math.abs(it.x-px) < it.w/2 + PLAYER_R - 5 && pyC < wallBottom(it) + PLAYER_R - 5)
+        return die(OB_LABEL.wall);
+      continue;
+    }
+    const iy = groundY(it.x) - it.dy;
+    const dx = it.x-px, dy = iy-pyC;
+    const rr = it.r + PLAYER_R;
+    if (dx*dx+dy*dy < rr*rr){
+      if (it.ob) return die(OB_LABEL[it.type]);
+      it.hit = true; score += it.val; coins++;
+      sfx(it.type==='diamond'?'moon':'collect');
+      track('collectible_picked_up', { type: it.type, score_value: it.val });
+      floaters.push({ x:W*PLAYER_SX+dx, y:iy-14, t:0, txt:'+'+it.val });
+    }
+  }
+}
+const floaters = [];
+
+function render(){
+  if (!terrain){ ctx.fillStyle='#F6F1E5'; ctx.fillRect(0,0,W,H); return; }
+  // sky (gradient cached: it only changes during weather transitions/resizes)
+  const c1 = wmixCol('sky',0), c2 = wmixCol('sky',1);
+  const skyKey = c1[0]+'.'+c1[1]+'.'+c1[2]+'|'+c2[0]+'.'+c2[1]+'.'+c2[2]+'|'+H;
+  if (skyCache.key !== skyKey){
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, rgbStr(c1)); g.addColorStop(1, rgbStr(c2));
+    skyCache.key = skyKey; skyCache.g = g;
+  }
+  ctx.fillStyle = skyCache.g; ctx.fillRect(0,0,W,H);
+
+  // sun (paper, with fold rays)
+  const sunA = wmix('sun');
+  if (sunA > 0.02){
+    ctx.save(); ctx.globalAlpha = sunA;
+    ctx.translate(W*0.82, H*0.16); ctx.rotate(now*0.1);
+    for (let i=0;i<8;i++){ ctx.rotate(TAU/8); poly([[30,0],[46,-6],[46,6]], '#F2C14E'); }
+    ctx.rotate(-now*0.1);
+    ctx.fillStyle='#F5CE62'; ctx.beginPath(); ctx.arc(0,0,26,0,TAU); ctx.fill();
+    ctx.fillStyle='#EDBD45'; ctx.beginPath(); ctx.arc(0,0,26,Math.PI*0.5,Math.PI*1.5); ctx.fill();
+    ctx.restore();
+  }
+
+  drawMountains();
+  drawTerrain();
+  drawItems();
+  if (state==='playing' || state==='menu' || state==='countdown') drawPlayer();
+  if (state==='dead') drawDeathBits();
+  drawParticles();
+  drawFloaters();
+  if (state==='playing' || state==='dead' || state==='countdown') drawHUD();
+
+  // 3-2-1 countdown + GO! flash
+  if (state==='countdown' && countdownT > 0){
+    const frac = countdownT - Math.floor(countdownT);
+    const scale = 1 + (1-frac)*0.3;
+    ctx.save();
+    ctx.translate(W/2, H*0.36); ctx.scale(scale, scale);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='rgba(46,42,36,0.15)';
+    ctx.font='900 110px -apple-system, sans-serif';
+    ctx.fillText(String(Math.ceil(countdownT)), 4, 6);       // paper drop-shadow
+    ctx.fillStyle='#E4572E';
+    ctx.fillText(String(Math.ceil(countdownT)), 0, 0);
+    ctx.restore();
+  } else if (goT > 0){
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, goT/0.35);
+    ctx.translate(W/2, H*0.36); ctx.scale(1.15-goT*0.2, 1.15-goT*0.2);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#2E8B4F';
+    ctx.font='900 90px -apple-system, sans-serif';
+    ctx.fillText('GO!', 0, 0);
+    ctx.restore();
+  }
+
+  // storm darkening + lightning flash
+  const dark = wmix('dark');
+  if (dark>0.01){ ctx.fillStyle=`rgba(38,36,48,${dark})`; ctx.fillRect(0,0,W,H); }
+  if (wx.flash>0.02){ ctx.fillStyle=`rgba(255,255,250,${wx.flash*0.55})`; ctx.fillRect(0,0,W,H); }
+}
+
+function drawMountains(){
+  // two parallax layers sampled from the same (smoothed) chart
+  const mc = wmixCol('mount',null);
+  for (const [par, yBase, amp, tint] of [[0.18, H*0.72, H*0.20, 0.10],[0.42, H*0.78, H*0.28, 0]]){
+    ctx.fillStyle = rgbStr(rgbLerp(mc,[255,255,255],tint+0.08));
+    ctx.beginPath(); ctx.moveTo(0,H);
+    const step = 26;
+    for (let sx2=0; sx2<=W+step; sx2+=step){
+      const wx2 = (camX*par + sx2);
+      const i = Math.floor(wrapX(wx2*2.2)/SEG);
+      const v = terrain.norm[Math.min(i, terrain.norm.length-1)];
+      ctx.lineTo(sx2, yBase - v*amp);
+    }
+    ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+  }
+}
+
+const TSTEP = 8;
+let hbuf = null;    // per-frame surface heights sampled once at TSTEP px
+function drawTerrain(){
+  const n = Math.ceil(W/TSTEP)+3;
+  if (!hbuf || hbuf.length < n) hbuf = new Float32Array(n);
+  for (let i=0;i<n;i++) hbuf[i] = groundY(camX + i*TSTEP);
+  const hAt = sx2 => hbuf[Math.max(0, Math.min(n-1, Math.round(sx2/TSTEP)))];
+
+  // main paper ground (no canvas shadow: a cheap edge band supplies the depth cue)
+  ctx.beginPath(); ctx.moveTo(-4,H+4);
+  for (let i=0;i<n;i++) ctx.lineTo(i*TSTEP, hbuf[i]);
+  ctx.lineTo(W+4,H+4); ctx.closePath();
+  ctx.fillStyle = '#FBF7EE';
+  ctx.fill();
+  // soft under-surface band
+  ctx.strokeStyle='rgba(58,54,48,0.05)'; ctx.lineWidth=12;
+  ctx.beginPath();
+  for (let i=0;i<n;i++){ const y=hbuf[i]+7; i?ctx.lineTo(i*TSTEP,y):ctx.moveTo(0,y); }
+  ctx.stroke();
+
+  // fold facets: one per data segment, alternating shade + crease lines
+  const i0 = Math.floor(camX/SEG), i1 = Math.floor((camX+W)/SEG)+1;
+  for (let i=i0; i<=i1; i++){
+    const xA = i*SEG - camX, xB = (i+1)*SEG - camX;
+    const yA = hAt(xA), yB = hAt(xB);
+    const up = yB < yA; // price going up
+    if (i%2===0){
+      ctx.fillStyle = 'rgba(58,54,48,0.035)';
+      ctx.beginPath(); ctx.moveTo(xA,yA);
+      for (let s=xA+TSTEP; s<=xB; s+=TSTEP) ctx.lineTo(s, hAt(s));
+      ctx.lineTo(xB,yB); ctx.lineTo(xB,H); ctx.lineTo(xA,H); ctx.closePath(); ctx.fill();
+    }
+    // crease
+    ctx.strokeStyle='rgba(58,54,48,0.10)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(xA,yA); ctx.lineTo(xA,H); ctx.stroke();
+    // subtle green/red edge along the surface by direction
+    ctx.strokeStyle = up ? 'rgba(63,163,94,0.5)' : 'rgba(214,69,61,0.45)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let s=xA; s<=xB; s+=TSTEP){ const yy=hAt(s); s===xA?ctx.moveTo(s,yy):ctx.lineTo(s,yy); }
+    ctx.stroke();
+  }
+}
+
+function drawItems(){
+  const lo = camX-80, hi = camX+W+80;
+  for (const it of items){
+    if (it.hit || it.x<lo || it.x>hi) continue;
+    drawItem(it, it.x-camX);
+  }
+}
+
+function drawPlayer(){
+  const sx2 = W*PLAYER_SX;
+  const gy = groundY(camX+sx2);
+  if (player.grounded || player.y > gy-140) softShadow(sx2, gy+4, 20*(player.grounded?1:clamp(1-(gy-player.y)/240,0.3,1)));
+  ctx.save();
+  ctx.translate(sx2, player.y);
+  drawCharacter(variantKey, player.anim, player.grounded, player.vy, player.angle, false);
+  ctx.restore();
+}
+function drawDeathBits(){
+  for (const b of deathBits){
+    ctx.save(); ctx.translate(b.x,b.y); ctx.rotate(b.rot);
+    ctx.fillStyle=b.col; ctx.fillRect(-b.s/2,-b.s/2,b.s,b.s*0.7);
+    ctx.restore();
+  }
+}
+function drawFloaters(){
+  for (let i=floaters.length-1;i>=0;i--){
+    const f = floaters[i]; f.t += 0.016;
+    if (f.t>0.8){ floaters.splice(i,1); continue; }
+    ctx.globalAlpha = 1-f.t/0.8;
+    ctx.fillStyle='#B23F1E'; ctx.font='900 15px -apple-system, sans-serif'; ctx.textAlign='center';
+    ctx.fillText(f.txt, f.x, f.y - f.t*46);
+    ctx.globalAlpha = 1;
+  }
+}
+
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function drawHUD(){
+  const safeTop = 12;
+  // score (top-right)
+  ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.fillStyle='rgba(46,42,36,0.9)';
+  ctx.font='900 26px -apple-system, sans-serif';
+  ctx.fillText(Math.round(score).toLocaleString(), W-62, safeTop+4);
+  ctx.font='700 11px -apple-system, sans-serif';
+  ctx.fillStyle='rgba(46,42,36,0.45)';
+  ctx.fillText('SCORE', W-62, safeTop+34);
+  // best (top-left)
+  ctx.textAlign='left';
+  ctx.fillText('BEST '+best.toLocaleString(), 14, safeTop+4);
+  // the real chart, big and bold along the bottom: full date + price
+  const di = dayIndexAt(camX + W*PLAYER_SX);
+  if (di>=0){
+    const d = new Date((terrain.startDay+di)*86400000);
+    const label = 'PLS · '+d.getUTCDate()+' '+MONTHS[d.getUTCMonth()]+' '+d.getUTCFullYear();
+    const p = terrain.prices[di]/1e9;
+    ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    ctx.fillStyle='rgba(46,42,36,0.5)';
+    ctx.font='800 12px -apple-system, sans-serif';
+    ctx.fillText(label, W/2, H-52);
+    ctx.fillStyle='rgba(46,42,36,0.92)';
+    ctx.font='900 34px -apple-system, sans-serif';
+    ctx.fillText('$'+Number(p.toPrecision(4)), W/2, H-16);
+  }
+}
+
+/* =====================================================================
+   UI wiring
+   ===================================================================== */
+function buildRocketPreview(){
+  const cv = el('rocketPreview');
+  const cx = cv.getContext('2d');
+  cx.setTransform(2,0,0,2,0,0);
+  cx.clearRect(0,0,150,85);
+  cx.translate(72,58); cx.scale(1.7,1.7);
+  drawOnto(cx, ()=>drawCharacter('rocket', 0.3, false, 0, -0.1, true));
+}
+function updateStartHint(){
+  el('bestLine').textContent = best>0 ? `Personal best: ${best.toLocaleString()}` : '';
+}
+
+el('playBtn').addEventListener('click', startRun);
+el('restartBtn').addEventListener('click', restart);
+el('shareBtn').addEventListener('click', ()=>{ saveName(); if(lastRun) shareScore(lastRun); });
+el('muteBtn').addEventListener('click', ()=>{ setMute(!muted); sfx('click'); });
+el('pname').addEventListener('change', saveName);
+el('saveNameBtn').addEventListener('click', saveNameAndSync);
+el('pname').addEventListener('keydown', e=>{ if (e.key==='Enter'){ e.preventDefault(); saveNameAndSync(); el('pname').blur(); } });
+for (const id of ['boardBtn1','boardBtn2']){
+  el(id).addEventListener('click', ()=>{
+    saveName();
+    el('board').classList.remove('hidden');
+    track('leaderboard_viewed', { tab: boardPeriod });
+    loadBoard();
+  });
+}
+el('boardClose').addEventListener('click', ()=> el('board').classList.add('hidden'));
+document.querySelectorAll('#board .tab').forEach(t=>{
+  t.addEventListener('click', ()=>{
+    document.querySelectorAll('#board .tab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on');
+    boardPeriod = t.dataset.p;
+    track('leaderboard_viewed', { tab: boardPeriod });
+    loadBoard();
+  });
+});
+
+/* =====================================================================
+   BOOT — terrain: worker (daily) -> localStorage cache -> baked fallback
+   ===================================================================== */
+const BAKED = JSON.parse(document.getElementById('baked').textContent);
+async function boot(){
+  resize();
+  let data = null;
+  try {
+    const ctl = new AbortController(); setTimeout(()=>ctl.abort(), 3500);
+    const r = await fetch(API+'/terrain', { signal: ctl.signal });
+    if (r.ok){
+      const j = await r.json();
+      if (j && Array.isArray(j.prices) && j.prices.length>100 && j.startDay) {
+        data = j;
+        localStorage.setItem('pnj_terrain', JSON.stringify(j));
+      }
+    }
+  } catch(e){}
+  if (!data){
+    try {
+      const c = JSON.parse(localStorage.getItem('pnj_terrain')||'null');
+      if (c && Array.isArray(c.prices) && c.prices.length>100) data = c;
+    } catch(e){}
+  }
+  if (!data || (BAKED.date > data.date)) data = BAKED;
+  buildTerrain(data);
+  spawnCourse();
+  resetPlayer();
+  state = 'menu';
+  buildRocketPreview();
+  updateStartHint();
+  setMute(muted);
+  requestAnimationFrame(frame);
+}
+boot();
+</script>
+</body>
+</html>
