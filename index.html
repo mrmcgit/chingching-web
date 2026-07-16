@@ -3,737 +3,1035 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ching Ching - PulseChain Portfolio</title>
-<meta name="description" content="View a PulseChain wallet portfolio">
-<meta property="og:title" content="Ching Ching - PulseChain Portfolio">
-<meta property="og:description" content="View token holdings, prices, and portfolio value">
+<title>Ching Ching - Portfolio</title>
+<meta name="description" content="View a PulseChain and Ethereum wallet portfolio">
+<meta property="og:title" content="Ching Ching - Portfolio">
+<meta property="og:description" content="View token holdings, prices, and portfolio value across PulseChain and Ethereum">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
-    background: #0a0a0f;
-    color: #e8e8e8;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
+    background: #0a0a0f; color: #e8e8e8; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
   }
   .card {
     background: linear-gradient(145deg, #141420 0%, #0d0d18 50%, #12101e 100%);
-    border: 2px solid rgba(255,255,255,0.08);
-    border-radius: 20px;
-    padding: 28px 24px;
-    width: 100%;
-    max-width: 380px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(100,50,200,0.05);
-    position: relative;
+    border: 2px solid rgba(255,255,255,0.08); border-radius: 20px;
+    padding: 28px 24px; width: 100%; max-width: 380px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 40px rgba(100,50,200,0.05); position: relative;
   }
   .card.ath::before {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 22px;
-    padding: 2px;
-    background: conic-gradient(
-      from var(--gold-angle, 0deg),
-      #d4a017, #f5d060, #fffbe6, #f5d060, #d4a017, #a07810, #d4a017
-    );
+    content: ''; position: absolute; inset: -2px; border-radius: 22px; padding: 2px;
+    background: conic-gradient(from var(--gold-angle, 0deg), #d4a017, #f5d060, #fffbe6, #f5d060, #d4a017, #a07810, #d4a017);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    animation: goldSpin 3s linear forwards;
-    pointer-events: none;
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    animation: goldSpin 3s linear forwards; pointer-events: none;
   }
-  .card.ath {
-    border-color: transparent;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(212,160,23,0.15);
-  }
-  @property --gold-angle {
-    syntax: '<angle>';
-    initial-value: 0deg;
-    inherits: false;
-  }
-  @keyframes goldSpin {
-    to { --gold-angle: 360deg; }
-  }
-  .header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
+  .card.ath { border-color: transparent; box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(212,160,23,0.15); }
+  @property --gold-angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+  @keyframes goldSpin { to { --gold-angle: 360deg; } }
+  .app-banner { display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; margin: 0 0 18px; border-radius: 14px; background: rgba(106,90,205,0.10); border: 1px solid rgba(106,90,205,0.22); }
+  .app-banner-icon { width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0; }
+  .app-banner-text { flex: 1; min-width: 0; }
+  .app-banner-title { font-size: 13px; font-weight: 700; color: #e8e8e8; }
+  .app-banner-sub { font-size: 11px; color: #9a94c0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .app-banner-get { flex-shrink: 0; background: linear-gradient(135deg,#6a5acd,#8a7aed); color: #fff; font-size: 12px; font-weight: 700; padding: 6px 15px; border-radius: 20px; text-decoration: none; }
+  .app-banner-get:hover { opacity: 0.9; }
+  .app-banner-x { flex-shrink: 0; background: none; border: none; color: #6a6a7a; font-size: 19px; line-height: 1; cursor: pointer; padding: 2px 5px; }
+  .app-banner-x:hover { color: #aaa; }
+  .header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
   .header-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-  .logo { width: 36px; height: 36px; border-radius: 8px; }
-  .wallet-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #e8e8e8;
-    letter-spacing: -0.3px;
-  }
-  .wallet-subtitle {
-    font-size: 11px;
-    color: #555;
-    font-family: 'SF Mono', 'Menlo', monospace;
-    margin-top: 2px;
-  }
-  .period-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 1;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
+  .logo { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
+  .wallet-title { font-size: 14px; font-weight: 600; color: #e8e8e8; letter-spacing: -0.3px; }
+  .wallet-subtitle { font-size: 11px; color: #555; font-family: 'SF Mono', 'Menlo', monospace; margin-top: 2px; }
+  .wallet-id { display: flex; align-items: center; gap: 6px; cursor: pointer; border-radius: 8px; padding: 2px 5px; margin: -2px -5px; transition: background 0.15s; }
+  .wallet-id:hover { background: rgba(255,255,255,0.05); }
+  .wallet-edit { width: 13px; height: 13px; color: #5a5a6a; flex-shrink: 0; }
+  .wallet-id:hover .wallet-edit { color: #aaa; }
+  .wallet-input { display: flex; gap: 8px; margin: 0 0 16px; }
+  .wallet-input input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #e8e8e8; font-size: 13px; font-family: 'SF Mono','Menlo',monospace; outline: none; }
+  .wallet-input input:focus { border-color: rgba(106,90,205,0.5); }
+  .wallet-input button { flex-shrink: 0; padding: 9px 16px; border-radius: 10px; border: none; background: linear-gradient(135deg,#6a5acd,#8a7aed); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .period-row { display: flex; align-items: center; gap: 4px; flex-shrink: 1; flex-wrap: wrap; justify-content: center; }
   .total-section { text-align: center; margin: 16px 0 12px; }
-  .total-value {
-    font-size: 56px;
-    font-weight: 800;
-    letter-spacing: -2px;
-    background: linear-gradient(135deg, #fff 0%, #c0c0c0 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .total-diff {
-    text-align: center;
-    font-size: 40px;
-    font-weight: 700;
-    letter-spacing: -1px;
-    margin-top: 4px;
-    cursor: pointer;
-    user-select: none;
-    transition: opacity 0.15s;
-  }
+  .total-value { font-size: 56px; font-weight: 800; letter-spacing: -2px; background: linear-gradient(135deg, #fff 0%, #c0c0c0 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .total-diff { text-align: center; font-size: 40px; font-weight: 700; letter-spacing: -1px; margin-top: 4px; cursor: pointer; user-select: none; transition: opacity 0.15s; }
   .total-diff:active { opacity: 0.6; }
-  .total-diff.up { color: #34c759; }
-  .total-diff.down { color: #ff3b30; }
-  .total-diff.flat { color: #999; }
-  .period-pill {
-    padding: 3px 8px;
-    border-radius: 10px;
-    font-size: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    border: 1px solid rgba(255,255,255,0.08);
-    background: rgba(255,255,255,0.03);
-    color: #777;
-    transition: all 0.2s;
-    user-select: none;
-  }
+  .total-diff.up { color: #34c759; } .total-diff.down { color: #ff3b30; } .total-diff.flat { color: #999; }
+  .period-pill { padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; cursor: pointer; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03); color: #777; transition: all 0.2s; user-select: none; }
   .period-pill:hover { border-color: rgba(255,255,255,0.15); color: #aaa; }
   .period-pill.active { border-color: rgba(106,90,205,0.4); background: rgba(106,90,205,0.12); color: #b0a0ff; }
-  .change-value {
-    display: inline-flex;
-    align-items: center;
-    gap: 3px;
-    font-size: 13px;
-    font-weight: 600;
+
+  /* ---- Chain toggle pills (header, top-right, above period pills) ---- */
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .chain-filter { display: flex; gap: 5px; justify-content: flex-end; }
+  .chain-pill {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9px;
+    font-size: 10px; font-weight: 600; cursor: pointer; user-select: none;
+    border: 1px solid rgba(255,255,255,0.09); background: rgba(255,255,255,0.03); color: #6a6a7a; transition: all 0.15s;
   }
-  .change-value.up { color: #34c759; }
-  .change-value.down { color: #ff3b30; }
-  .change-value.flat { color: #999; }
-  .divider {
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
-    margin: 16px 0;
-  }
-  .tokens-list { display: flex; flex-direction: column; gap: 10px; }
-  .token-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .token-left { display: flex; align-items: center; gap: 10px; }
-  .token-icon {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: rgba(255,255,255,0.06);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #888;
-    overflow: hidden;
-  }
+  .chain-pill:hover { border-color: rgba(255,255,255,0.18); }
+  .chain-pill .dot { width: 6px; height: 6px; border-radius: 50%; opacity: 0.35; transition: opacity 0.15s; }
+  .chain-pill.on { color: #fff; }
+  .chain-pill.on .dot { opacity: 1; }
+  .chain-pill.on[data-chain="pulsechain"] { border-color: rgba(255,46,154,0.55); background: rgba(255,46,154,0.14); }
+  .chain-pill.on[data-chain="ethereum"] { border-color: rgba(127,176,255,0.55); background: rgba(127,176,255,0.14); }
+  .chain-pill .ct { opacity: 0.6; font-weight: 500; }
+
+  .divider { height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent); margin: 16px 0; }
+
+  /* ---- Sparkline ---- */
+  .spark-wrap { margin: 6px 0 2px; position: relative; }
+  .spark-svg { width: 100%; height: 56px; display: block; overflow: visible; }
+  .spark-line { fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .spark-line.up { stroke: #34c759; } .spark-line.down { stroke: #ff3b30; }
+  .spark-cross { stroke: rgba(255,255,255,0.25); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; }
+  .spark-dot { opacity: 0; } .spark-hit { fill: transparent; cursor: crosshair; }
+  .spark-tip { position: fixed; z-index: 20; pointer-events: none; opacity: 0; transform: translate(-50%, -100%); background: rgba(20,20,30,0.95); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 5px 9px; font-size: 11px; white-space: nowrap; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+  .spark-tip .tv { font-weight: 700; color: #fff; } .spark-tip .td { color: #888; font-size: 10px; }
+  .spark-note { position: relative; display: flex; justify-content: center; margin-top: 4px; }
+  .spark-q { width: 16px; height: 16px; border-radius: 50%; border: 1px solid #44444f; background: transparent; color: #6b6b7b; font-size: 10px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; line-height: 1; }
+  .spark-q:hover, .spark-q.open { border-color: #6a6a7a; color: #aaa; }
+  .spark-pop { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); width: 232px; background: rgba(22,22,32,0.98); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 9px 11px; font-size: 11px; line-height: 1.45; color: #b8b8c8; box-shadow: 0 8px 24px rgba(0,0,0,0.55); opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 15; text-align: left; }
+  .spark-pop.show { opacity: 1; pointer-events: auto; }
+  .spark-loading { height: 56px; display: flex; align-items: center; justify-content: center; color: #444; font-size: 11px; }
+
+  /* ---- Allocation bar / treemap ---- */
+  .alloc-wrap { margin: 4px 0 2px; }
+  .alloc-label { display: flex; align-items: baseline; justify-content: space-between; font-size: 10px; color: #5b5b6b; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  .alloc-hint { font-size: 9px; color: #4a4a5a; font-weight: 500; text-transform: none; letter-spacing: 0; }
+  .alloc-view { cursor: pointer; }
+  .alloc-view > * { animation: allocFade 0.2s ease; }
+  @keyframes allocFade { from { opacity: 0.35; } to { opacity: 1; } }
+  .alloc-bar { display: flex; width: 100%; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px; background: #12101e; }
+  .alloc-seg { height: 100%; min-width: 3px; transition: opacity 0.15s; }
+  .alloc-seg:first-child { border-radius: 7px 0 0 7px; } .alloc-seg:last-child { border-radius: 0 7px 7px 0; }
+  .alloc-bar:hover .alloc-seg { opacity: 0.5; } .alloc-bar .alloc-seg:hover { opacity: 1; }
+  .tm-box { position: relative; width: 100%; height: 150px; border-radius: 8px; overflow: hidden; background: #12101e; }
+  .tm-cell { position: absolute; box-sizing: border-box; border: 1.5px solid #0d0d18; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; padding: 2px; transition: filter 0.15s; }
+  .tm-cell:hover { filter: brightness(1.12); }
+  .tm-sym { font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.45); line-height: 1.1; text-align: center; white-space: nowrap; overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
+  .tm-pct { font-size: 9px; font-weight: 600; color: rgba(255,255,255,0.88); text-shadow: 0 1px 2px rgba(0,0,0,0.45); margin-top: 1px; }
+
+  /* ---- Section headers ---- */
+  .section-head { display: flex; align-items: baseline; justify-content: space-between; margin: 18px 0 8px; }
+  .section-title { font-size: 12px; font-weight: 700; color: #9a94c0; text-transform: uppercase; letter-spacing: 0.6px; }
+  .section-total { font-size: 13px; font-weight: 600; color: #cfcfe0; }
+
+  /* ---- Rows (tokens / LP / stakes) ---- */
+  .rows-list { display: flex; flex-direction: column; gap: 2px; }
+  .token-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 8px 8px 12px; border-radius: 12px; position: relative; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; background: transparent; width: 100%; text-align: left; }
+  .token-row::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent, #444); }
+  .token-row:hover { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.06); }
+  .token-row.open { background: rgba(106,90,205,0.06); border-color: rgba(106,90,205,0.18); }
+  .token-row.static { cursor: default; } .token-row.static:hover { background: transparent; border-color: transparent; }
+  .token-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .token-icon { width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #888; overflow: hidden; flex-shrink: 0; position: relative; }
   .token-icon img { width: 100%; height: 100%; object-fit: cover; }
-  .token-symbol { font-size: 14px; font-weight: 600; }
-  .token-right { text-align: right; }
-  .token-value { font-size: 14px; font-weight: 600; }
+  .chain-badge { position: absolute; right: -2px; bottom: -2px; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid #12101e; }
+  .token-meta { min-width: 0; } .token-symbol { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .token-sub { font-size: 11px; color: #6b6b7b; }
+  .token-right { text-align: right; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .token-figs { text-align: right; } .token-value { font-size: 14px; font-weight: 600; }
   .token-change { font-size: 11px; font-weight: 500; }
-  .token-change.up { color: #34c759; }
-  .token-change.down { color: #ff3b30; }
-  .footer {
-    margin-top: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
+  .token-change.up { color: #34c759; } .token-change.down { color: #ff3b30; } .token-change.flat { color: #888; }
+  .chev { width: 14px; height: 14px; color: #555; transition: transform 0.2s; flex-shrink: 0; }
+  .token-row.open .chev { transform: rotate(90deg); color: #b0a0ff; }
+
+  .show-more { width: 100%; margin-top: 8px; padding: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); color: #8a8a9a; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .show-more:hover { border-color: rgba(255,255,255,0.16); color: #bbb; }
+  .empty-note { font-size: 12px; color: #555; text-align: center; padding: 10px; }
+
+  /* ---- Token info panel ---- */
+  .token-info { overflow: hidden; }
+  .token-info-inner { padding: 8px 6px 12px; }
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+  .stat-box { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px 10px; }
+  .stat-k { font-size: 9px; color: #6b6b7b; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-v { font-size: 14px; font-weight: 600; color: #e8e8e8; margin-top: 2px; }
+  .contract-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(255,255,255,0.03); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; }
+  .contract-addr { font-family: 'SF Mono','Menlo',monospace; font-size: 11px; color: #9a94c0; }
+  .copy-btn { border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #b0a0ff; border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; }
+  .copy-btn:active { opacity: 0.6; }
+  .tspark { margin-top: 2px; } .tspark svg { width: 100%; height: 88px; display: block; }
+  .tspark-axis { display: flex; justify-content: space-between; font-size: 9px; color: #5b5b6b; margin-top: 3px; }
+  .chart-links { display: flex; gap: 12px; margin-top: 10px; justify-content: center; }
+  .chart-links a { font-size: 11px; color: #6a5acd; text-decoration: none; font-weight: 600; }
+  .chart-links a:hover { color: #8a7aed; }
+
+  .footer { margin-top: 20px; display: flex; align-items: center; justify-content: space-between; }
   .timestamp { font-size: 11px; color: #444; }
-  .app-link {
-    font-size: 12px;
-    color: #6a5acd;
-    text-decoration: none;
-    font-weight: 600;
-    transition: color 0.2s;
-  }
+  .app-link { font-size: 12px; color: #6a5acd; text-decoration: none; font-weight: 600; transition: color 0.2s; }
   .app-link:hover { color: #8a7aed; }
-  .loading {
-    text-align: center;
-    padding: 60px 20px;
-    color: #555;
-    font-size: 14px;
-  }
-  .spinner {
-    width: 32px; height: 32px;
-    border: 3px solid rgba(255,255,255,0.08);
-    border-top-color: #6a5acd;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin: 0 auto 16px;
-  }
+  .loading { text-align: center; padding: 60px 20px; color: #555; font-size: 14px; }
+  .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.08); border-top-color: #6a5acd; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .error { text-align: center; color: #ff3b30; padding: 40px 20px; font-size: 14px; }
   .input-section { text-align: center; padding: 20px 0; }
-  .input-section input {
-    width: 100%;
-    padding: 12px 16px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.04);
-    color: #e8e8e8;
-    font-size: 14px;
-    font-family: 'SF Mono', 'Menlo', monospace;
-    outline: none;
-    transition: border-color 0.2s;
-  }
+  .input-section input { width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04); color: #e8e8e8; font-size: 14px; font-family: 'SF Mono', 'Menlo', monospace; outline: none; transition: border-color 0.2s; }
   .input-section input:focus { border-color: rgba(106,90,205,0.5); }
   .input-section input::placeholder { color: #444; }
-  .input-section button {
-    margin-top: 12px;
-    padding: 10px 24px;
-    border-radius: 10px;
-    border: none;
-    background: linear-gradient(135deg, #6a5acd, #8a7aed);
-    color: white;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
+  .input-section button { margin-top: 12px; padding: 10px 24px; border-radius: 10px; border: none; background: linear-gradient(135deg, #6a5acd, #8a7aed); color: white; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
   .input-section button:hover { opacity: 0.85; }
 </style>
 </head>
 <body>
 
 <div class="card" id="card">
+  <div class="app-banner" id="appBanner" style="display:none">
+    <img src="logo.png" class="app-banner-icon" alt="Ching Ching">
+    <div class="app-banner-text">
+      <div class="app-banner-title">Ching Ching for iPhone</div>
+      <div class="app-banner-sub">Widgets, HEX stakes, alerts &amp; more</div>
+    </div>
+    <a class="app-banner-get" href="https://apps.apple.com/app/ching-ching/id1622965914" target="_blank" rel="noopener">Get</a>
+    <button class="app-banner-x" onclick="dismissBanner()" aria-label="Dismiss">&times;</button>
+  </div>
   <div class="header">
     <div class="header-left">
-      <svg class="logo" viewBox="0 0 271 271" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="g1" x1="272" y1="1" x2="1" y2="271" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stop-color="#00eaff"/><stop offset=".25" stop-color="#0080ff"/>
-            <stop offset=".5" stop-color="#8000ff"/><stop offset=".76" stop-color="#e619e6"/>
-            <stop offset="1" stop-color="#f00"/>
-          </linearGradient>
-        </defs>
-        <path d="M209 29l54 95c4 6 4 17 0 23l-54 95c-4 6-13 12-20 12H81c-7 0-16-6-20-12L7 147c-4-6-4-17 0-23L61 29c4-6 13-12 20-12h108c7 0 16 6 20 12z" fill="url(#g1)" stroke="#bcbcbc" stroke-width=".4"/>
-        <text x="135" y="152" text-anchor="middle" font-size="130" font-weight="800" fill="#d1e6e8" font-family="-apple-system,sans-serif">C</text>
-      </svg>
-      <div>
-        <div class="wallet-title" id="walletTitle"></div>
-        <div class="wallet-subtitle" id="walletSubtitle"></div>
+      <img class="logo" src="logo.png" alt="Ching Ching" width="36" height="36">
+      <div class="wallet-id" onclick="toggleWalletInput()" title="Change wallet">
+        <div>
+          <div class="wallet-title" id="walletTitle"></div>
+          <div class="wallet-subtitle" id="walletSubtitle"></div>
+        </div>
+        <svg class="wallet-edit" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" stroke-width="1.6"/><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
       </div>
     </div>
-    <div class="period-row" id="periodPills" style="display:none">
-      <span class="period-pill active" data-period="h24" onclick="setPeriod('h24')">24h</span>
-      <span class="period-pill" data-period="d7" onclick="setPeriod('d7')">7d</span>
-      <span class="period-pill" data-period="d30" onclick="setPeriod('d30')">30d</span>
+    <div class="header-right">
+      <div class="chain-filter" id="chainPills" style="display:none"></div>
+      <div class="period-row" id="periodPills" style="display:none">
+        <span class="period-pill active" data-period="h24" onclick="setPeriod('h24')">24h</span>
+        <span class="period-pill" data-period="d7" onclick="setPeriod('d7')">7d</span>
+        <span class="period-pill" data-period="d30" onclick="setPeriod('d30')">30d</span>
+      </div>
     </div>
   </div>
+  <div class="wallet-input" id="walletInput" style="display:none">
+    <input id="changeAddr" placeholder="0x…, .pls or .eth name" spellcheck="false" onkeydown="if(event.key==='Enter')submitWallet()">
+    <button onclick="submitWallet()">View</button>
+  </div>
   <div id="content">
-    <div class="loading">
-      <div class="spinner"></div>
-      Enter a PulseChain wallet address
-    </div>
+    <div class="loading"><div class="spinner"></div>Enter a wallet address</div>
     <div class="input-section" id="inputSection">
-      <input type="text" id="addrInput" placeholder="0x... or .pls name" spellcheck="false"
+      <input type="text" id="addrInput" placeholder="0x..., .pls or .eth name" spellcheck="false"
              onkeydown="if(event.key==='Enter')loadWallet()">
       <br>
       <button onclick="loadWallet()">View Portfolio</button>
     </div>
   </div>
 </div>
+<div class="spark-tip" id="sparkTip"><div class="tv"></div><div class="td"></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/js-sha3@0.9.3/src/sha3.min.js"></script>
 <script>
-const PULSESCAN_API = 'https://api.scan.pulsechain.com/api/';
-const DEXSCREENER_API = 'https://api.dexscreener.com/tokens/v1/pulsechain/';
-const PULSEX_SUBGRAPH = 'https://graph.pulsechain.com/subgraphs/name/pulsechain/pulsexv2';
-const PULSECHAIN_RPC = 'https://rpc.pulsechain.com';
-const PNS_REGISTRY = '0xbd5133993FCDED5945c5539D9f032261F0d13170';
-const NATIVE_PLS = 'native_pls';
-const WPLS = '0xa1077a294dde1b09bb078844df40758a5d0f9a27';
+// ---- Chain registry: everything the viewer needs per chain, from free CORS sources ----
+const CHAINS = {
+  pulsechain: {
+    id: 'pulsechain', label: 'PLS', name: 'PulseChain', nativeSym: 'PLS',
+    nativeSentinel: 'native_pls', color: '#FF2E9A', dexSlug: 'pulsechain',
+    // Multiple endpoints — tried in order, falling through on failure.
+    scans: ['https://api.scan.pulsechain.com', 'https://scan.pulsechain.box'],
+    rpcs: ['https://rpc.pulsechain.com', 'https://rpc-pulsechain.g4mm4.io', 'https://pulsechain-rpc.publicnode.com'],
+    wrapped: '0xa1077a294dde1b09bb078844df40758a5d0f9a27',
+    // 7d/30d history only available for PulseChain (PulseX subgraph)
+    subgraph: 'https://graph.pulsechain.com/subgraphs/name/pulsechain/pulsexv2',
+    hexSubgraph: 'https://graph.pulsechain.com/subgraphs/name/Codeakk/Hex'
+  },
+  ethereum: {
+    id: 'ethereum', label: 'ETH', name: 'Ethereum', nativeSym: 'ETH',
+    nativeSentinel: 'native_eth', color: '#7FB0FF', dexSlug: 'ethereum',
+    scans: ['https://eth.blockscout.com'],
+    rpcs: ['https://ethereum-rpc.publicnode.com', 'https://eth.drpc.org', 'https://cloudflare-eth.com'],
+    wrapped: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
+    subgraph: null
+  }
+};
+const CHAIN_ORDER = ['pulsechain', 'ethereum'];
+const PNS_REGISTRY = '0xbd5133993FCDED5945c5539D9f032261F0d13170'; // PulseChain Name Service
+const ENS_REGISTRY = '0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e'; // Ethereum Name Service
 const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
+const ALLOC_COLORS = ['#3987e5','#199e70','#c98500','#008300','#9085e9','#e66767','#d55181','#d95926'];
+const ALLOC_OTHER = '#6E7794';
+const HISTORY_TOKEN_CAP = 12;
+const TOP_N = 5; // rows shown before "show all"
+const DUST_USD = 1;      // hide any holding/position worth less than $1
+const MIN_LIQ_USD = 100; // hide tokens whose DEX liquidity is under $100
 
-function hexToBytes(hex) {
-  const bytes = new Uint8Array(hex.length / 2);
-  for (let i = 0; i < hex.length; i += 2) bytes[i/2] = parseInt(hex.substr(i, 2), 16);
-  return bytes;
-}
-
+function hexToBytes(hex) { const b = new Uint8Array(hex.length/2); for (let i=0;i<hex.length;i+=2) b[i/2]=parseInt(hex.substr(i,2),16); return b; }
 function namehash(name) {
-  let node = '0000000000000000000000000000000000000000000000000000000000000000';
+  let node = '0'.repeat(64);
   if (!name) return node;
   const labels = name.split('.');
-  for (let i = labels.length - 1; i >= 0; i--) {
-    const labelHash = keccak_256(labels[i]); // hex string from js-sha3
-    node = keccak_256(hexToBytes(node + labelHash));
-  }
+  for (let i = labels.length-1; i>=0; i--) node = keccak_256(hexToBytes(node + keccak_256(labels[i])));
   return node;
 }
-
-async function rpcCall(to, data) {
-  const res = await fetch(PULSECHAIN_RPC, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', method: 'eth_call', params: [{ to, data }, 'latest'], id: 1 })
-  });
-  const json = await res.json();
-  return json.result;
-}
-
-/// Resolve a .pls name to an 0x address via PulseChain Name Service
-async function resolvePLSName(name) {
-  const nodeHex = namehash(name);
-  // 1. Get resolver from PNS registry: resolver(bytes32)
-  const resolverResult = await rpcCall(PNS_REGISTRY, '0x0178b8bf' + nodeHex);
-  const resolverAddr = '0x' + resolverResult.slice(26, 66);
-  if (resolverAddr === '0x0000000000000000000000000000000000000000') return null;
-  // 2. Get address from resolver: addr(bytes32)
-  const addrResult = await rpcCall(resolverAddr, '0x3b3b57de' + nodeHex);
-  const addr = '0x' + addrResult.slice(26, 66);
-  if (addr === '0x0000000000000000000000000000000000000000') return null;
-  return addr;
-}
-
-let currentTokens = [];
-let currentTotal = 0;
-let currentPeriod = 'h24';
-let showAbsolute = true; // toggle between absolute ($) and percentage (%)
-
-function shortAddr(addr) {
-  return addr.slice(0, 6) + '...' + addr.slice(-4);
-}
-
-function formatUSD(n) {
-  if (n >= 1e12) return '$' + (n/1e12).toFixed(2) + 'T';
-  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
-  if (n >= 1e6) return '$' + (n/1e6).toFixed(2) + 'M';
-  if (n >= 1000) return '$' + Math.round(n).toLocaleString('en-US');
-  if (n >= 1) return '$' + n.toFixed(2);
-  if (n >= 0.01) return '$' + n.toFixed(3);
-  return '$' + n.toFixed(6);
-}
-
-function formatPct(n) {
-  const sign = n >= 0 ? '+' : '';
-  return sign + n.toFixed(1) + '%';
-}
-
-function isSuspicious(name, symbol) {
-  const lower = (name + ' ' + symbol).toLowerCase();
-  return SUSPICIOUS.some(k => lower.includes(k));
-}
-
-function periodLabel(p) {
-  return { h1: '1h', h6: '6h', h24: '24h' }[p] || p;
-}
-
-async function fetchTokens(address) {
-  const res = await fetch(PULSESCAN_API + '?module=account&action=tokenlist&address=' + address);
-  const json = await res.json();
-  if (json.status !== '1' || !json.result) return [];
-  return json.result.filter(t => t.type === 'ERC-20');
-}
-
-async function fetchPLSBalance(address) {
-  const res = await fetch(PULSESCAN_API + '?module=account&action=balance&address=' + address);
-  const json = await res.json();
-  return json.result || '0';
-}
-
-async function fetchPrices(addresses) {
-  if (!addresses.length) return {};
-  const batches = [];
-  for (let i = 0; i < addresses.length; i += 30) {
-    batches.push(addresses.slice(i, i + 30));
-  }
-  const prices = {};
-  for (const batch of batches) {
+// eth_call across the chain's RPCs, falling through to the next on any failure.
+async function rpcCall(chain, to, data) {
+  for (const rpc of CHAINS[chain].rpcs) {
     try {
-      const res = await fetch(DEXSCREENER_API + batch.join(','));
-      const pairs = await res.json();
+      const res = await fetch(rpc, { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ jsonrpc:'2.0', method:'eth_call', params:[{to,data},'latest'], id:1 }) });
+      if (res.ok) { const j = await res.json(); if (j.result !== undefined && !j.error) return j.result; }
+    } catch(e) {}
+  }
+  return null;
+}
+// GET a blockscout path (e.g. '/api/?module=…' or '/api/v2/tokens/0x…') across the
+// chain's scan bases, falling through to the next on failure.
+async function scanGet(chain, path) {
+  for (const base of CHAINS[chain].scans) {
+    try { const res = await fetch(base + path); if (res.ok) return await res.json(); } catch(e) {}
+  }
+  return null;
+}
+/// Resolve a .pls (PNS) or .eth (ENS) name to an address on its chain.
+async function resolveName(name) {
+  const isEth = name.endsWith('.eth');
+  const chain = isEth ? 'ethereum' : 'pulsechain';
+  const registry = isEth ? ENS_REGISTRY : PNS_REGISTRY;
+  const node = namehash(name);
+  const resolverRes = await rpcCall(chain, registry, '0x0178b8bf' + node); // resolver(bytes32)
+  const resolver = '0x' + resolverRes.slice(26, 66);
+  if (/^0x0+$/.test(resolver)) return null;
+  const addrRes = await rpcCall(chain, resolver, '0x3b3b57de' + node); // addr(bytes32)
+  const addr = '0x' + addrRes.slice(26, 66);
+  return /^0x0+$/.test(addr) ? null : addr;
+}
+
+let currentTokens = [];   // all tokens across chains, each tagged {chain}
+let currentPeriod = 'h24';
+let enabledChains = new Set(); // chains toggled on (at least one always stays on)
+let showAbsolute = true;
+let showAllTokens = false;
+let sparkPoints = null;
+let holdersCache = {};
+let currentHistory = {};  // pulsechain addr -> [{date,price}]
+let currentStakes = null; // null=loading, []=none, [...]=HEX stakes
+let currentLP = null;     // null=loading, []=none, [...]=LP positions
+let showAllStakes = false, showAllLP = false, showTreemap = false;
+let currentColorMap = {}; // allocation label -> colour, shared by the bar/treemap and row accents
+let hexPayoutCumulative = { pulsechain: null, ethereum: null }; // day -> cumulative payoutPerTshareHEX
+let rawTokenLists = {}; // chain -> raw blockscout token list (incl. LP tokens filtered out of the view)
+let hexMeta = { pulsechain: { price: 0, h24: 0 }, ethereum: { price: 0, h24: 0 } }; // HEX price + 24h per chain
+
+function shortAddr(a) { return a.slice(0,6) + '...' + a.slice(-4); }
+function formatUSD(n) {
+  if (n>=1e12) return '$'+(n/1e12).toFixed(2)+'T'; if (n>=1e9) return '$'+(n/1e9).toFixed(2)+'B';
+  if (n>=1e6) return '$'+(n/1e6).toFixed(2)+'M'; if (n>=1000) return '$'+Math.round(n).toLocaleString('en-US');
+  if (n>=1) return '$'+n.toFixed(2); if (n>=0.01) return '$'+n.toFixed(3); return '$'+n.toFixed(6);
+}
+function formatPrice(n) {
+  if (n>=1) return '$'+n.toLocaleString('en-US',{maximumFractionDigits:4}); if (n>=0.0001) return '$'+n.toFixed(6);
+  if (n<=0) return '-'; const exp=Math.floor(Math.log10(n)); return '$'+n.toFixed(Math.min(18,-exp+3));
+}
+function formatPct(n) { return (n>=0?'+':'') + n.toFixed(1) + '%'; }
+function formatCount(n) { n=parseInt(n); if (isNaN(n)) return '-'; if (n>=1e6) return (n/1e6).toFixed(2)+'M'; if (n>=1e3) return (n/1e3).toFixed(1)+'k'; return n.toLocaleString('en-US'); }
+function isSuspicious(name, sym) { const l=(name+' '+sym).toLowerCase(); return SUSPICIOUS.some(k=>l.includes(k)); }
+function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+async function fetchTokenList(chain, address) {
+  const j = await scanGet(chain, '/api/?module=account&action=tokenlist&address=' + address);
+  if (!j || j.status !== '1' || !j.result) return [];
+  return j.result.filter(t => t.type === 'ERC-20');
+}
+async function fetchNativeBalance(chain, address) {
+  const j = await scanGet(chain, '/api/?module=account&action=balance&address=' + address);
+  return (j && j.result) || '0';
+}
+async function fetchPrices(chain, addresses) {
+  if (!addresses.length) return {};
+  const slug = CHAINS[chain].dexSlug, prices = {};
+  for (let i=0;i<addresses.length;i+=30) {
+    const batch = addresses.slice(i, i+30);
+    try {
+      const pairs = await (await fetch(`https://api.dexscreener.com/tokens/v1/${slug}/` + batch.join(','))).json();
       if (!Array.isArray(pairs)) continue;
-      for (const pair of pairs) {
-        const addr = (pair.baseToken?.address || '').toLowerCase();
-        if (!addr || prices[addr]) continue;
-        prices[addr] = {
-          price: parseFloat(pair.priceUsd) || 0,
-          h1: parseFloat(pair.priceChange?.h1) || 0,
-          h6: parseFloat(pair.priceChange?.h6) || 0,
-          h24: parseFloat(pair.priceChange?.h24) || 0,
-          liquidity: pair.liquidity?.usd || 0,
-          symbol: pair.baseToken?.symbol || '?',
-          name: pair.baseToken?.name || ''
-        };
+      for (const p of pairs) {
+        const addr = (p.baseToken?.address || '').toLowerCase();
+        if (!addr) continue;
+        const price = parseFloat(p.priceUsd) || 0;
+        if (price <= 0) continue;
+        const liq = p.liquidity?.usd || 0;
+        if (prices[addr] && liq <= (prices[addr].liquidity || 0)) continue;
+        prices[addr] = { price, h1:parseFloat(p.priceChange?.h1)||0, h6:parseFloat(p.priceChange?.h6)||0,
+          h24:parseFloat(p.priceChange?.h24)||0, liquidity:liq, marketCap:p.marketCap||p.fdv||0,
+          volume:p.volume?.h24||0, pairAddress:p.pairAddress||'', symbol:p.baseToken?.symbol||'?', name:p.baseToken?.name||'' };
       }
-    } catch (e) { /* skip */ }
+    } catch(e) {}
   }
   return prices;
 }
-
-/// Fetch 7d and 30d % change from PulseX V2 subgraph for a list of token addresses.
-/// Single GraphQL call for all tokens, returns { address: { d7: number, d30: number } }
-async function fetchHistoricalChanges(addresses) {
-  const results = {};
-  if (!addresses.length) return results;
-
-  // Calculate timestamps for 7d and 30d ago
-  const now = Math.floor(Date.now() / 1000);
-  const d30ago = now - 30 * 86400;
-
-  // Fetch 35 days of daily data for all tokens in one query
-  const addrList = addresses.map(a => `"${a.toLowerCase()}"`).join(',');
-  const query = `{tokenDayDatas(first:1000, orderBy:date, orderDirection:desc, where:{token_in:[${addrList}], date_gte:${d30ago}}){token{id} date priceUSD}}`;
-
+/// PulseChain-only daily price history (PulseX v2 subgraph). Returns { byToken, changes }.
+async function fetchHistorical(addresses) {
+  const out = { byToken:{}, changes:{} };
+  if (!addresses.length) return out;
+  const now = Math.floor(Date.now()/1000), d30ago = now - 30*86400;
+  const list = addresses.map(a=>`"${a.toLowerCase()}"`).join(',');
+  const query = `{tokenDayDatas(first:1000, orderBy:date, orderDirection:desc, where:{token_in:[${list}], date_gte:${d30ago}}){token{id} date priceUSD}}`;
   try {
-    const res = await fetch(PULSEX_SUBGRAPH, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-    const json = await res.json();
-    const rows = json?.data?.tokenDayDatas || [];
-
-    // Group by token address
-    const byToken = {};
-    for (const r of rows) {
-      const addr = r.token.id.toLowerCase();
-      if (!byToken[addr]) byToken[addr] = [];
-      byToken[addr].push({ date: parseInt(r.date), price: parseFloat(r.priceUSD) });
+    const j = await (await fetch(CHAINS.pulsechain.subgraph, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({query}) })).json();
+    for (const r of (j?.data?.tokenDayDatas || [])) {
+      const a = r.token.id.toLowerCase();
+      (out.byToken[a] = out.byToken[a] || []).push({ date:parseInt(r.date), price:parseFloat(r.priceUSD) });
     }
-
-    // Calculate 7d and 30d changes for each token
-    for (const [addr, days] of Object.entries(byToken)) {
-      if (days.length < 2) continue;
-      const newest = days[0].price;
-      if (newest <= 0) continue;
-
-      const d7target = now - 7 * 86400;
-      const d7row = days.reduce((best, d) => Math.abs(d.date - d7target) < Math.abs(best.date - d7target) ? d : best);
-      const d30row = days[days.length - 1];
-
-      results[addr] = {
-        d7: d7row.price > 0 ? ((newest - d7row.price) / d7row.price) * 100 : 0,
-        d30: d30row.price > 0 ? ((newest - d30row.price) / d30row.price) * 100 : 0
-      };
+    const d7t = now - 7*86400;
+    for (const [a, days] of Object.entries(out.byToken)) {
+      if (days.length < 2) continue; const newest = days[0].price; if (newest<=0) continue;
+      const d7 = days.reduce((b,d)=>Math.abs(d.date-d7t)<Math.abs(b.date-d7t)?d:b), d30 = days[days.length-1];
+      out.changes[a] = { d7: d7.price>0?((newest-d7.price)/d7.price)*100:0, d30: d30.price>0?((newest-d30.price)/d30.price)*100:0 };
     }
+  } catch(e) { console.error('history fetch failed', e); }
+  return out;
+}
 
-    // Check if current portfolio value is a 30d high
-    // Build daily portfolio values using token balances and historical prices
-    if (currentTokens.length > 0) {
-      const allDates = new Set();
-      for (const days of Object.values(byToken)) {
-        for (const d of days) allDates.add(d.date);
-      }
-      let maxHistorical = 0;
-      for (const date of allDates) {
-        let dayTotal = 0;
-        for (const t of currentTokens) {
-          const days = byToken[t.address];
-          if (!days) continue;
-          const dayRow = days.find(d => d.date === date);
-          if (!dayRow) continue;
-          // value = current balance * historical price
-          const balance = t.value / (byToken[t.address]?.[0]?.price || 1);
-          dayTotal += balance * dayRow.price;
-        }
-        if (dayTotal > maxHistorical) maxHistorical = dayTotal;
-      }
-      // If current total >= all historical daily totals, it's a 30d high
-      if (currentTotal >= maxHistorical * 0.99) { // 1% tolerance
-        document.getElementById('card')?.classList.add('ath');
-      } else {
-        document.getElementById('card')?.classList.remove('ath');
-      }
+// ---------- filtered views ----------
+function tokensForFilter() {
+  return currentTokens.filter(t => enabledChains.has(t.chain)).slice().sort((a,b) => b.value - a.value);
+}
+function filterTotal() { return tokensForFilter().reduce((s,t)=>s+t.value, 0); }
+function chainCount(chain) { return currentTokens.filter(t => t.chain === chain).length; }
+
+function hexChangeFor(chain, period) {
+  if (period === 'h24') return hexMeta[chain]?.h24 || 0;
+  if (chain === 'pulsechain') { // d7/d30 from HEX token history when available, else flat
+    const days = currentHistory[HEX_ADDR];
+    if (days && days.length >= 2 && days[0].price > 0) {
+      const now = days[0].price, t = Math.floor(Date.now()/1000) - (period === 'd7' ? 7 : 30) * 86400;
+      const row = days.reduce((b, d) => Math.abs(d.date - t) < Math.abs(b.date - t) ? d : b);
+      if (row.price > 0) return ((now - row.price) / row.price) * 100;
     }
-  } catch (e) {
-    console.error('PulseX subgraph historical fetch failed:', e);
   }
-  return results;
+  return 0;
 }
-
-function weightedChange(tokens, total, period) {
-  if (total <= 0) return 0;
-  let change = 0;
-  for (const t of tokens) {
-    change += (t.value / total) * (t[period] || 0);
-  }
-  return change;
+// Whole-portfolio value = tokens + HEX stakes + LP (for the enabled chains). Stakes track
+// HEX's change over the period; LP is treated as flat (no per-period underlying data).
+function portfolioValue() {
+  const tokens = tokensForFilter();
+  const stakes = (currentStakes || []).filter(s => enabledChains.has(s.chain));
+  const lp = (currentLP || []).filter(p => enabledChains.has(p.chain));
+  const tokenVal = tokens.reduce((s, t) => s + t.value, 0);
+  const stakeVal = stakes.reduce((s, x) => s + x.value, 0);
+  const lpVal = lp.reduce((s, x) => s + x.value, 0);
+  return { tokens, stakes, lp, tokenVal, stakeVal, lpVal, total: tokenVal + stakeVal + lpVal };
 }
-
-function toggleDiffMode() {
-  showAbsolute = !showAbsolute;
-  updateDiffDisplay();
+function grandTotal() { return portfolioValue().total; }
+function portfolioChange(period) {
+  const p = portfolioValue();
+  let prev = 0;
+  for (const t of p.tokens) { const h = t[period]; prev += (h == null) ? t.value : t.value / (1 + h / 100); }
+  for (const s of p.stakes) { const h = hexChangeFor(s.chain, period); prev += s.value / (1 + h / 100); }
+  for (const lp of p.lp) { const h = period === 'h24' ? (lp.h24 || 0) : 0; prev += lp.value / (1 + h / 100); } // LP uses 24h, flat for 7d/30d
+  const abs = p.total - prev;
+  return { abs, pct: prev > 0 ? (abs / prev) * 100 : 0 };
 }
-
+function toggleDiffMode() { showAbsolute = !showAbsolute; updateDiffDisplay(); }
 function updateDiffDisplay() {
-  const diffEl = document.getElementById('totalDiff');
-  if (!diffEl) return;
-  // Check if any tokens have data for this period
-  const hasData = currentTokens.some(t => t[currentPeriod] !== null && t[currentPeriod] !== undefined);
-  if (!hasData && (currentPeriod === 'd7' || currentPeriod === 'd30')) {
-    diffEl.className = 'total-diff flat';
-    diffEl.textContent = 'Loading...';
-    return;
-  }
-  const change = weightedChange(currentTokens, currentTotal, currentPeriod);
-  const absDiff = currentTotal * (change / (100 + change));
-  const cls = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
-  diffEl.className = 'total-diff ' + cls;
-  if (showAbsolute) {
-    const sign = absDiff >= 0 ? '+' : '-';
-    diffEl.textContent = sign + formatUSD(Math.abs(absDiff));
-  } else {
-    const arrow = change > 0.1 ? '\u25B2 ' : change < -0.1 ? '\u25BC ' : '';
-    diffEl.textContent = arrow + formatPct(change);
-  }
+  const el = document.getElementById('totalDiff'); if (!el) return;
+  const { abs, pct } = portfolioChange(currentPeriod);
+  const cls = pct > 0.1 ? 'up' : pct < -0.1 ? 'down' : 'flat';
+  el.className = 'total-diff ' + cls;
+  el.textContent = showAbsolute ? (abs >= 0 ? '+' : '-') + formatUSD(Math.abs(abs)) : (pct > 0.1 ? '▲ ' : pct < -0.1 ? '▼ ' : '') + formatPct(pct);
 }
-
-function setPeriod(period) {
-  currentPeriod = period;
-  // Update pill states
-  document.querySelectorAll('.period-pill').forEach(p => {
-    p.classList.toggle('active', p.dataset.period === period);
-  });
-  // Update total diff display
+function setPeriod(p) {
+  currentPeriod = p;
+  document.querySelectorAll('.period-pill').forEach(x=>x.classList.toggle('active', x.dataset.period===p));
   updateDiffDisplay();
-  // Update per-token changes
-  document.querySelectorAll('.token-change[data-addr]').forEach(el => {
-    const token = currentTokens.find(t => t.address === el.dataset.addr);
-    if (!token) return;
-    const val = token[period];
-    if (val === null || val === undefined) {
-      el.className = 'token-change flat';
-      el.textContent = '...';
-    } else {
-      el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
-      el.textContent = formatPct(val);
-    }
+  document.querySelectorAll('.token-change[data-addr]').forEach(el=>{
+    const t = currentTokens.find(x=>x.key===el.dataset.addr); if (!t) return;
+    const v = t[p]; if (v==null) { el.className='token-change flat'; el.textContent='...'; }
+    else { el.className='token-change '+(v>=0?'up':'down'); el.textContent=formatPct(v); }
+  });
+  document.querySelectorAll('.token-change[data-lph24]').forEach(el=>{
+    if (p === 'h24') { const h = parseFloat(el.dataset.lph24); el.className='token-change '+(h>=0?'up':'down'); el.textContent=formatPct(h); }
+    else { el.className='token-change flat'; el.textContent='—'; }
   });
 }
+function toggleChain(c) {
+  if (enabledChains.has(c)) { if (enabledChains.size <= 1) return; enabledChains.delete(c); } // keep at least one on
+  else enabledChains.add(c);
+  showAllTokens = false;
+  renderChainPills();
+  renderBody();
+}
+function renderChainPills() {
+  const el = document.getElementById('chainPills'); if (!el) return;
+  const chains = CHAIN_ORDER.filter(c => chainCount(c) > 0);
+  if (chains.length < 2) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  el.innerHTML = chains.map(c => `<span class="chain-pill ${enabledChains.has(c)?'on':''}" data-chain="${c}" onclick="toggleChain('${c}')"><span class="dot" style="background:${CHAINS[c].color}"></span>${CHAINS[c].label}</span>`).join('');
+}
+function toggleShowAll() { showAllTokens = !showAllTokens; renderBody(); }
+function toggleSparkNote(btn) { const pop = btn.nextElementSibling; btn.classList.toggle('open', pop.classList.toggle('show')); }
 
-function renderCard(address, total, tokens) {
-  currentTokens = tokens;
-  currentTotal = total;
+function accentFor(label) { return currentColorMap[label] || ALLOC_OTHER; }
 
-  const content = document.getElementById('content');
-  const change = weightedChange(tokens, total, currentPeriod);
-  const changeClass = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
-  const arrow = change > 0.1 ? '\u25B2' : change < -0.1 ? '\u25BC' : '';
+// Allocation over the WHOLE portfolio: every token, plus HEX Stakes and Liquidity
+// as their own items (matching the app). One colour assignment feeds the bar, the
+// treemap, and the row accents so they stay consistent.
+function allocationItems() {
+  const pv = portfolioValue();
+  const items = pv.tokens.map(t => ({ label: t.symbol, value: t.value }));
+  if (pv.stakeVal > 0) items.push({ label: 'HEX Stakes', value: pv.stakeVal });
+  if (pv.lpVal > 0) items.push({ label: 'Liquidity', value: pv.lpVal });
+  return items.sort((a, b) => b.value - a.value);
+}
+function buildColorMap(items) {
+  const map = {};
+  items.forEach((it, i) => { map[it.label] = i < ALLOC_COLORS.length ? ALLOC_COLORS[i] : ALLOC_OTHER; });
+  return map;
+}
+function allocationSegments(items) {
+  const N = ALLOC_COLORS.length;
+  const segs = items.slice(0, N).map((it, i) => ({ label: it.label, value: it.value, color: ALLOC_COLORS[i] }));
+  const otherVal = items.slice(N).reduce((s, i) => s + i.value, 0);
+  if (otherVal > 0.01) segs.push({ label: 'Other', value: otherVal, color: ALLOC_OTHER });
+  return segs;
+}
+function toggleTreemap() { showTreemap = !showTreemap; renderBody(); }
+function renderAllocation(items, total) {
+  if (total <= 0 || !items.length) return '';
+  const segs = allocationSegments(items);
+  const inner = showTreemap ? renderTreemap(segs, total) : renderAllocBarInner(segs, total);
+  return `<div class="alloc-wrap"><div class="alloc-label">Allocation<span class="alloc-hint">tap to ${showTreemap ? 'collapse' : 'expand'}</span></div><div class="alloc-view" onclick="toggleTreemap()">${inner}</div></div>`;
+}
+function renderAllocBarInner(segs, total) {
+  const bar = segs.map(s => { const pct = (s.value / total) * 100; return `<span class="alloc-seg" style="flex-basis:${pct}%;background:${s.color}" title="${escapeHtml(s.label)} · ${formatUSD(s.value)} · ${pct.toFixed(1)}%"></span>`; }).join('');
+  return `<div class="alloc-bar">${bar}</div>`;
+}
+// Squarified treemap (Bruls et al.) — keeps cell aspect ratios close to square so labels read.
+function squarify(items, x, y, w, h) {
+  const total = items.reduce((s, i) => s + i.value, 0);
+  if (total <= 0) return [];
+  const scaled = items.map(i => ({ ...i, area: i.value / total * w * h }));
+  const out = [], rect = { x, y, w, h };
+  const worst = (row, side) => { const sum = row.reduce((s, r) => s + r.area, 0), mx = Math.max(...row.map(r => r.area)), mn = Math.min(...row.map(r => r.area)), s2 = sum * sum, d2 = side * side; return Math.max(d2 * mx / s2, s2 / (d2 * mn)); };
+  const layout = (row) => {
+    const sum = row.reduce((s, r) => s + r.area, 0);
+    if (rect.w >= rect.h) { const rw = sum / rect.h; let cy = rect.y; for (const r of row) { const rh = r.area / rw; out.push({ ...r, x: rect.x, y: cy, w: rw, h: rh }); cy += rh; } rect.x += rw; rect.w -= rw; }
+    else { const rh = sum / rect.w; let cx = rect.x; for (const r of row) { const rw = r.area / rh; out.push({ ...r, x: cx, y: rect.y, w: rw, h: rh }); cx += rw; } rect.y += rh; rect.h -= rh; }
+  };
+  const rem = scaled.slice(); let row = [];
+  while (rem.length) { const it = rem[0], side = Math.min(rect.w, rect.h); if (!row.length || worst(row, side) >= worst([...row, it], side)) { row.push(it); rem.shift(); } else { layout(row); row = []; } }
+  if (row.length) layout(row);
+  return out;
+}
+function renderTreemap(segs, total) {
+  const W = 320, H = 150;
+  const rects = squarify(segs, 0, 0, W, H);
+  const cells = rects.map(r => {
+    const pct = (r.value / total) * 100, showLabel = r.w > 50 && r.h > 26; // only label cells big enough to read
+    const label = showLabel ? `<div class="tm-sym">${escapeHtml(r.label)}</div><div class="tm-pct">${pct.toFixed(pct < 10 ? 1 : 0)}%</div>` : '';
+    return `<div class="tm-cell" style="left:${(r.x / W * 100).toFixed(2)}%;top:${(r.y / H * 100).toFixed(2)}%;width:${(r.w / W * 100).toFixed(2)}%;height:${(r.h / H * 100).toFixed(2)}%;background:${r.color}" title="${escapeHtml(r.label)} · ${formatUSD(r.value)} · ${pct.toFixed(1)}%">${label}</div>`;
+  }).join('');
+  return `<div class="tm-box">${cells}</div>`;
+}
 
-  let tokenRows = '';
-  for (const t of tokens.slice(0, 6)) {
-    const pctVal = t[currentPeriod] || 0;
-    const chClass = pctVal >= 0 ? 'up' : 'down';
-    const iconUrl = `https://dd.dexscreener.com/ds-data/tokens/pulsechain/${t.address}.png`;
-    // Escape symbol for safe HTML
-    const safeSymbol = t.symbol.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const fallback = safeSymbol.replace(/[^a-zA-Z0-9]/g, '').slice(0, 2) || '??';
-    tokenRows += `
-      <div class="token-row">
-        <div class="token-left">
-          <div class="token-icon"><img src="${iconUrl}" onerror="this.parentElement.textContent='${fallback}'"></div>
-          <span class="token-symbol">${safeSymbol}</span>
-        </div>
-        <div class="token-right">
-          <div class="token-value">${formatUSD(t.value)}</div>
-          <div class="token-change ${chClass}" data-addr="${t.address}">${formatPct(pctVal)}</div>
-        </div>
-      </div>`;
-  }
+function tokenRowHtml(t, i) {
+  const pct = t[currentPeriod] || 0;
+  const chCls = t[currentPeriod]==null ? 'flat' : (pct>=0?'up':'down');
+  const chTxt = t[currentPeriod]==null ? '—' : formatPct(pct);
+  const cfg = CHAINS[t.chain];
+  const iconUrl = `https://dd.dexscreener.com/ds-data/tokens/${cfg.dexSlug}/${t.address}.png`;
+  const sym = escapeHtml(t.symbol), fb = sym.replace(/[^a-zA-Z0-9]/g,'').slice(0,2)||'??';
+  const badge = CHAIN_ORDER.length>1 ? `<span class="chain-badge" style="background:${cfg.color}"></span>` : '';
+  return `
+    <div class="token-row" data-addr="${t.key}" style="--accent:${accentFor(t.symbol)}" onclick="toggleTokenInfo('${t.key}')">
+      <div class="token-left">
+        <div class="token-icon"><img src="${iconUrl}" onerror="this.parentElement.firstChild.remove?this.parentElement.insertAdjacentText('afterbegin','${fb}'):0;this.remove()">${badge}</div>
+        <div class="token-meta"><div class="token-symbol">${sym}</div></div>
+      </div>
+      <div class="token-right">
+        <div class="token-figs"><div class="token-value">${formatUSD(t.value)}</div>
+          <div class="token-change ${chCls}" data-addr="${t.key}">${chTxt}</div></div>
+        <svg class="chev" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+    <div class="token-info" id="info-${t.key}" style="display:none"></div>`;
+}
 
+function renderTokensSection() {
+  const tokens = tokensForFilter();
+  if (!tokens.length) return `<div class="section-head"><span class="section-title">Tokens</span></div><div class="empty-note">No tokens on this chain</div>`;
+  const shown = showAllTokens ? tokens : tokens.slice(0, TOP_N);
+  const rows = shown.map((t,i)=>tokenRowHtml(t,i)).join('');
+  const more = tokens.length > TOP_N
+    ? `<button class="show-more" onclick="toggleShowAll()">${showAllTokens ? 'Show less' : 'Show all ' + tokens.length + ' tokens'}</button>` : '';
+  const total = tokens.reduce((s,t)=>s+t.value,0);
+  return `<div class="section-head"><span class="section-title">Tokens</span><span class="section-total">${formatUSD(total)}</span></div>
+    <div class="rows-list">${rows}</div>${more}`;
+}
+
+function toggleShowAllStakes() { showAllStakes = !showAllStakes; renderBody(); }
+function renderStakes() {
+  if (currentStakes === null) return '';
+  const stakes = currentStakes.filter(s => enabledChains.has(s.chain));
+  if (!stakes.length) return '';
+  const total = stakes.reduce((s, x) => s + x.value, 0);
+  const shown = showAllStakes ? stakes : stakes.slice(0, TOP_N);
+  const rows = shown.map(s => {
+    const cfg = CHAINS[s.chain], sym = s.chain === 'ethereum' ? 'eHEX' : 'pHEX';
+    const icon = `https://dd.dexscreener.com/ds-data/tokens/${cfg.dexSlug}/${HEX_ADDR}.png`;
+    const badge = CHAIN_ORDER.length > 1 ? `<span class="chain-badge" style="background:${cfg.color}"></span>` : '';
+    return `<div class="token-row static" style="--accent:${accentFor('HEX Stakes')}">
+      <div class="token-left">
+        <div class="token-icon"><img src="${icon}" onerror="this.remove()">${badge}</div>
+        <div class="token-meta"><div class="token-symbol">${sym}</div>
+          <div class="token-sub">${s.tShares.toFixed(2)} T-Shares · ends ${hexDayToDate(s.endDay).toLocaleDateString('en-US',{year:'numeric',month:'short'})}</div></div>
+      </div>
+      <div class="token-right"><div class="token-figs"><div class="token-value">${formatUSD(s.value)}</div>
+        <div class="token-change flat">${Math.round(s.totalHex).toLocaleString('en-US')} HEX</div></div></div>
+    </div>`;
+  }).join('');
+  const more = stakes.length > TOP_N ? `<button class="show-more" onclick="toggleShowAllStakes()">${showAllStakes ? 'Show less' : 'Show all ' + stakes.length + ' stakes'}</button>` : '';
+  return `<div class="section-head"><span class="section-title">HEX Stakes</span><span class="section-total">${formatUSD(total)}</span></div><div class="rows-list">${rows}</div>${more}`;
+}
+function toggleShowAllLP() { showAllLP = !showAllLP; renderBody(); }
+function renderLP() {
+  if (currentLP === null) return '';
+  const lp = currentLP.filter(p => enabledChains.has(p.chain));
+  if (!lp.length) return '';
+  const total = lp.reduce((s, x) => s + x.value, 0);
+  const shown = showAllLP ? lp : lp.slice(0, TOP_N);
+  const rows = shown.map(p => {
+    const cfg = CHAINS[p.chain];
+    const badge = CHAIN_ORDER.length > 1 ? `<span class="chain-badge" style="background:${cfg.color}"></span>` : '';
+    const chCls = currentPeriod === 'h24' ? ((p.h24 || 0) >= 0 ? 'up' : 'down') : 'flat';
+    const chTxt = currentPeriod === 'h24' ? formatPct(p.h24 || 0) : '—';
+    return `<div class="token-row static" style="--accent:${accentFor('Liquidity')}">
+      <div class="token-left">
+        <div class="token-icon" style="background:${cfg.color}22;color:${cfg.color};font-size:9px;font-weight:800">LP${badge}</div>
+        <div class="token-meta"><div class="token-symbol">${escapeHtml(p.pairName)}</div><div class="token-sub">${escapeHtml(p.dex)} LP</div></div>
+      </div>
+      <div class="token-right"><div class="token-figs"><div class="token-value">${formatUSD(p.value)}</div>
+        <div class="token-change ${chCls}" data-lph24="${(p.h24 || 0).toFixed(3)}">${chTxt}</div></div></div>
+    </div>`;
+  }).join('');
+  const more = lp.length > TOP_N ? `<button class="show-more" onclick="toggleShowAllLP()">${showAllLP ? 'Show less' : 'Show all ' + lp.length + ' positions'}</button>` : '';
+  return `<div class="section-head"><span class="section-title">Liquidity</span><span class="section-total">${formatUSD(total)}</span></div><div class="rows-list">${rows}</div>${more}`;
+}
+function renderStakesSection() { return renderStakes(); }
+function renderLPSection() { return renderLP(); }
+
+// Re-render everything below the header (called on filter / period / expand changes).
+function renderBody() {
+  const total = grandTotal();
+  const items = allocationItems();
+  currentColorMap = buildColorMap(items);
+  const { abs, pct } = portfolioChange(currentPeriod);
+  const diffCls = pct > 0.1 ? 'up' : pct < -0.1 ? 'down' : 'flat';
+  const showSpark = enabledChains.has('pulsechain'); // history is PulseChain-only
+
+  renderChainPills();
   const now = new Date();
-  const time = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-    + ' ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  const time = now.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) + ' ' + now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
 
-  // Show period pills now that data is loaded
-  document.getElementById('periodPills').style.display = 'flex';
-
-  const absDiff = total * (change / (100 + change));
-  const diffSign = absDiff >= 0 ? '+' : '-';
-  const diffClass = change > 0.1 ? 'up' : change < -0.1 ? 'down' : 'flat';
-
-  content.innerHTML = `
+  document.getElementById('content').innerHTML = `
     <div class="total-section">
       <div class="total-value">${formatUSD(total)}</div>
-      <div id="totalDiff" class="total-diff ${diffClass}" onclick="toggleDiffMode()">${diffSign}${formatUSD(Math.abs(absDiff))}</div>
+      <div id="totalDiff" class="total-diff ${diffCls}" onclick="toggleDiffMode()">${abs>=0?'+':'-'}${formatUSD(Math.abs(abs))}</div>
     </div>
+    ${showSpark ? '<div id="sparkHost"><div class="spark-loading">reconstructing history…</div></div>' : ''}
+    ${renderAllocation(items, total)}
     <div class="divider"></div>
-    <div class="tokens-list">${tokenRows}</div>
-    <div class="footer">
-      <span class="timestamp">${time}</span>
-      <a href="${APP_STORE_URL}" class="app-link">Get Ching Ching</a>
+    ${renderTokensSection()}
+    ${renderStakesSection()}
+    ${renderLPSection()}
+    <div class="footer"><span class="timestamp">${time}</span><a href="${APP_STORE_URL}" class="app-link">Get Ching Ching</a></div>`;
+
+  document.getElementById('periodPills').style.display = 'flex';
+  updateDiffDisplay();
+  if (showSpark && lastSparkline) renderSparkline(lastSparkline.series, lastSparkline.is30dHigh);
+}
+
+let lastSparkline = null;
+
+function renderSparkline(series, is30dHigh) {
+  lastSparkline = { series, is30dHigh };
+  const host = document.getElementById('sparkHost');
+  if (!host) return;
+  if (!series || series.length<3) { host.innerHTML=''; return; }
+  const W=320,H=56,padY=6, vals=series.map(p=>p.value), min=Math.min(...vals), max=Math.max(...vals), span=(max-min)||1;
+  const stepX=W/(series.length-1);
+  const pts=series.map((p,i)=>({x:i*stepX, y:padY+(H-2*padY)*(1-(p.value-min)/span), date:p.date, value:p.value}));
+  sparkPoints=pts;
+  const up = series[series.length-1].value >= series[0].value;
+  const line = pts.map((p,i)=>(i?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ');
+  const area = `M${pts[0].x} ${H} `+pts.map(p=>'L'+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ')+` L${pts[pts.length-1].x} ${H} Z`;
+  const col = up?'#34c759':'#ff3b30';
+  host.innerHTML = `<div class="spark-wrap"><svg class="spark-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="sparkSvg">
+    <defs><linearGradient id="sf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0.22"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#sf)"/><path class="spark-line ${up?'up':'down'}" d="${line}"/>
+    <line class="spark-cross" id="sparkCross" y1="0" y2="${H}"/><circle class="spark-dot" id="sparkDot" r="3.5" fill="${col}" stroke="#0d0d18" stroke-width="1.5"/>
+    <rect class="spark-hit" x="0" y="0" width="${W}" height="${H}"/></svg>
+    <div class="spark-note"><button class="spark-q" onclick="toggleSparkNote(this)">?</button><div class="spark-pop">~30-day value, reconstructed from today's holdings at past daily prices. It shows how prices moved, not your actual past balances (buys, sells and transfers aren't included).</div></div></div>`;
+  const svg=document.getElementById('sparkSvg'), cross=document.getElementById('sparkCross'), dot=document.getElementById('sparkDot'), tip=document.getElementById('sparkTip');
+  svg.addEventListener('pointermove', e=>{
+    const r=svg.getBoundingClientRect(); let idx=Math.round((e.clientX-r.left)/r.width*(pts.length-1)); idx=Math.max(0,Math.min(pts.length-1,idx));
+    const p=pts[idx]; cross.setAttribute('x1',p.x); cross.setAttribute('x2',p.x); cross.style.opacity=1;
+    dot.setAttribute('cx',p.x); dot.setAttribute('cy',p.y); dot.style.opacity=1;
+    tip.querySelector('.tv').textContent=formatUSD(p.value); tip.querySelector('.td').textContent=new Date(p.date*1000).toLocaleDateString('en-US',{month:'short',day:'numeric'});
+    tip.style.left=e.clientX+'px'; tip.style.top=(r.top-6)+'px'; tip.style.opacity=1;
+  });
+  svg.addEventListener('pointerleave', ()=>{ cross.style.opacity=0; dot.style.opacity=0; tip.style.opacity=0; });
+  if (is30dHigh) document.getElementById('card')?.classList.add('ath'); else document.getElementById('card')?.classList.remove('ath');
+}
+
+function reconstructValueHistory(byToken) {
+  const dates=[...new Set(Object.values(byToken).flat().map(d=>d.date))].sort((a,b)=>a-b);
+  if (!dates.length) return { series:[], is30dHigh:false };
+  const plsTokens = currentTokens.filter(t=>t.chain==='pulsechain');
+  const bal={}; let weight=0;
+  for (const t of plsTokens) { const newest=byToken[t.address]?.[0]?.price; if (!newest||newest<=0) continue; bal[t.address]=t.value/newest; weight+=t.value; }
+  if (weight<=0) return { series:[], is30dHigh:false };
+  const priceOn={}; for (const [a,days] of Object.entries(byToken)) { priceOn[a]={}; for (const d of days) priceOn[a][d.date]=d.price; }
+  const series=[]; let maxVal=0;
+  for (const date of dates) {
+    let dayTotal=0, present=0;
+    for (const t of plsTokens) { if (bal[t.address]===undefined) continue; const p=priceOn[t.address]?.[date]; if (p===undefined) continue; dayTotal+=bal[t.address]*p; present+=t.value; }
+    if (present/weight < 0.6) continue; series.push({date, value:dayTotal}); if (dayTotal>maxVal) maxVal=dayTotal;
+  }
+  const plsTotal = plsTokens.reduce((s,t)=>s+t.value,0);
+  return { series, is30dHigh: series.length>3 && plsTotal>=maxVal*0.99 };
+}
+
+async function fetchHolders(chain, addr) {
+  const key = chain+'/'+addr; if (holdersCache[key]!==undefined) return holdersCache[key];
+  const j = await scanGet(chain, '/api/v2/tokens/' + addr);
+  holdersCache[key] = j ? (j.holders ?? j.holders_count ?? j.token_holders_count ?? null) : null;
+  return holdersCache[key];
+}
+function tokenPriceSparkline(addr) {
+  const days = currentHistory[addr]; if (!days || days.length<3) return '';
+  const series=[...days].sort((a,b)=>a.date-b.date), W=300,H=88,padY=8, vals=series.map(d=>d.price), min=Math.min(...vals), max=Math.max(...vals), span=(max-min)||1, stepX=W/(series.length-1);
+  const pts=series.map((d,i)=>({x:i*stepX, y:padY+(H-2*padY)*(1-(d.price-min)/span)}));
+  const up=series[series.length-1].price>=series[0].price, col=up?'#34c759':'#ff3b30';
+  const line=pts.map((p,i)=>(i?'L':'M')+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ');
+  const area=`M${pts[0].x} ${H} `+pts.map(p=>'L'+p.x.toFixed(1)+' '+p.y.toFixed(1)).join(' ')+` L${pts[pts.length-1].x} ${H} Z`;
+  return `<div class="tspark"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="tsf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity="0.18"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#tsf)"/><path d="${line}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="tspark-axis"><span>30 days</span><span>${formatPrice(min)} – ${formatPrice(max)}</span></div></div>`;
+}
+async function toggleTokenInfo(key) {
+  const row = document.querySelector(`.token-row[data-addr="${key}"]`), panel = document.getElementById('info-'+key);
+  if (!row || !panel) return;
+  const open = row.classList.contains('open');
+  document.querySelectorAll('.token-row.open').forEach(r=>{ if (r!==row){ r.classList.remove('open'); const p=document.getElementById('info-'+r.dataset.addr); if (p) p.style.display='none'; } });
+  if (open) { row.classList.remove('open'); panel.style.display='none'; return; }
+  row.classList.add('open'); panel.style.display='block';
+  const t = currentTokens.find(x=>x.key===key); if (!t) return;
+  const cfg = CHAINS[t.chain];
+  const isNative = t.address === cfg.wrapped && t.native;
+  const shownAddr = t.native ? `Native ${cfg.nativeSym} (${cfg.label})` : shortAddr(t.contractAddress||t.address);
+  const copyTarget = t.contractAddress || t.address;
+  const mini = tokenPriceSparkline(t.address);
+  panel.innerHTML = `<div class="token-info-inner">
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-k">Price</div><div class="stat-v">${formatPrice(t.price)}</div></div>
+      <div class="stat-box"><div class="stat-k">Market Cap</div><div class="stat-v">${t.marketCap?formatUSD(t.marketCap):'-'}</div></div>
+      <div class="stat-box"><div class="stat-k">Liquidity</div><div class="stat-v">${t.liquidity?formatUSD(t.liquidity):'-'}</div></div>
+      <div class="stat-box"><div class="stat-k">Volume 24h</div><div class="stat-v">${t.volume?formatUSD(t.volume):'-'}</div></div>
+      <div class="stat-box"><div class="stat-k">Holders</div><div class="stat-v" id="holders-${key}">…</div></div>
+      <div class="stat-box"><div class="stat-k">24h</div><div class="stat-v" style="color:${(t.h24||0)>=0?'#34c759':'#ff3b30'}">${formatPct(t.h24||0)}</div></div>
     </div>
-  `;
+    <div class="contract-row"><span class="contract-addr">${escapeHtml(shownAddr)}</span><button class="copy-btn" onclick="copyText('${copyTarget}', this)">Copy</button></div>
+    ${mini}
+    <div class="chart-links"><a href="https://dexscreener.com/${cfg.dexSlug}/${copyTarget}" target="_blank" rel="noopener">View full chart on DexScreener ↗</a></div>
+  </div>`;
+  const hEl = document.getElementById('holders-'+key);
+  fetchHolders(t.chain, copyTarget).then(h=>{ if (hEl) hEl.textContent = h!=null?formatCount(h):'-'; });
+}
+function copyText(text, btn) { navigator.clipboard?.writeText(text).then(()=>{ const o=btn.textContent; btn.textContent='Copied'; setTimeout(()=>btn.textContent=o,1200); }); }
+
+function renderLoading() { document.getElementById('content').innerHTML='<div class="loading"><div class="spinner"></div>Loading portfolio...</div>'; }
+function renderError(m) { document.getElementById('content').innerHTML=`<div class="error">${m}</div>`; }
+
+/// Fetch one chain's tokens+native and return tagged token objects.
+async function loadChain(chain, address) {
+  const cfg = CHAINS[chain], out = [];
+  const [erc20, nativeWei] = await Promise.all([ fetchTokenList(chain, address), fetchNativeBalance(chain, address) ]);
+  rawTokenLists[chain] = erc20; // keep the full list (LP tokens are filtered out of the token view but needed for LP)
+  const addrs = erc20.map(t=>t.contractAddress.toLowerCase()); addrs.push(cfg.wrapped);
+  const prices = await fetchPrices(chain, [...new Set(addrs)]);
+  const wrapped = prices[cfg.wrapped] || { price:0 };
+  const nativeBal = parseFloat(nativeWei)/1e18;
+  if (nativeBal>0 && wrapped.price>0) out.push({
+    chain, key:chain+'/'+cfg.nativeSentinel, native:true, symbol:cfg.nativeSym, address:cfg.wrapped, contractAddress:cfg.wrapped,
+    balance:nativeBal, value:nativeBal*wrapped.price, price:wrapped.price, liquidity:wrapped.liquidity||0, marketCap:0,
+    volume:wrapped.volume||0, pairAddress:wrapped.pairAddress||'', name:cfg.name, h1:wrapped.h1||0, h6:wrapped.h6||0, h24:wrapped.h24||0, d7:null, d30:null });
+  for (const t of erc20) {
+    const a = t.contractAddress.toLowerCase(), p = prices[a];
+    if (!p || p.price<=0 || isSuspicious(t.name,t.symbol) || p.liquidity < MIN_LIQ_USD) continue;
+    const dec = parseInt(t.decimals)||18, bal = parseFloat(t.balance)/Math.pow(10,dec), value = bal*p.price;
+    if (value < DUST_USD) continue;
+    out.push({ chain, key:chain+'/'+a, native:false, symbol:p.symbol||t.symbol, address:a, contractAddress:t.contractAddress,
+      balance:bal, value, price:p.price, liquidity:p.liquidity, marketCap:p.marketCap, volume:p.volume, pairAddress:p.pairAddress,
+      name:p.name||t.name, h1:p.h1, h6:p.h6, h24:p.h24, d7:null, d30:null });
+  }
+  // Dedup within chain by symbol (keep larger)
+  const by={}; for (const t of out) if (!by[t.symbol] || t.value>by[t.symbol].value) by[t.symbol]=t;
+  return Object.values(by);
 }
 
-function renderLoading() {
-  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div>Loading portfolio...</div>';
+// ---------- HEX stakes ----------
+const HEX_ADDR = '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39';
+const HEX_LAUNCH_TS = Date.UTC(2019, 11, 3) / 1000; // HEX day 1 ~ 2019-12-03 UTC
+function hexDay() { return Math.floor((Date.now()/1000 - HEX_LAUNCH_TS) / 86400); }
+function hexDayToDate(d) { return new Date((HEX_LAUNCH_TS + d*86400) * 1000); }
+async function hexPriceFor(chain) {
+  try {
+    const arr = await (await fetch(`https://api.dexscreener.com/tokens/v1/${CHAINS[chain].dexSlug}/${HEX_ADDR}`)).json();
+    if (!Array.isArray(arr)) return { price: 0, h24: 0 };
+    let best = { price: 0, h24: 0 }, bestLiq = -1;
+    for (const p of arr) { const liq = p.liquidity?.usd || 0, pr = parseFloat(p.priceUsd) || 0; if (pr > 0 && liq > bestLiq) { best = { price: pr, h24: parseFloat(p.priceChange?.h24) || 0 }; bestLiq = liq; } }
+    return best;
+  } catch(e) { return { price: 0, h24: 0 }; }
+}
+/// Build a cumulative sum of daily payoutPerTshareHEX by HEX day (from the hexstats
+/// worker) so stake yield = T-Shares × (cum[endOrToday] - cum[startDay]). Cached per chain.
+async function loadHexPayouts(chain) {
+  if (hexPayoutCumulative[chain]) return hexPayoutCumulative[chain];
+  const url = chain === 'ethereum'
+    ? 'https://hexstats.chingching.xyz/fulldataethereum'
+    : 'https://hexstats.chingching.xyz/fulldatapulsechain';
+  try {
+    const arr = await (await fetch(url)).json();
+    const list = Array.isArray(arr) ? arr : (arr.data || Object.values(arr).find(Array.isArray));
+    const byDay = {}; let maxDay = 0;
+    for (const d of list) { const day = d.currentDay | 0; byDay[day] = d.payoutPerTshareHEX || 0; if (day > maxDay) maxDay = day; }
+    const cum = new Float64Array(maxDay + 2); let run = 0;
+    for (let day = 1; day <= maxDay; day++) { run += byDay[day] || 0; cum[day] = run; }
+    hexPayoutCumulative[chain] = cum;
+    return cum;
+  } catch(e) { console.error('hex payouts', chain, e); return null; }
+}
+function stakeYieldHex(chain, tShares, startDay, endDay) {
+  const cum = hexPayoutCumulative[chain]; if (!cum) return 0;
+  const maxDay = cum.length - 2, end = Math.min(hexDay(), endDay);
+  const a = cum[Math.min(Math.max(startDay, 0), maxDay)] || 0;
+  const b = cum[Math.min(Math.max(end, 0), maxDay)] || 0;
+  return tShares * Math.max(0, b - a);
+}
+/// pHEX stakes from the Codeakk/Hex subgraph. Active = endDay not yet passed.
+async function fetchPulseHexStakes(address) {
+  const q = `{stakeStarts(where:{stakerAddr:"${address.toLowerCase()}"}, first:1000, orderBy:endDay, orderDirection:asc){stakedHearts stakeTShares startDay endDay}}`;
+  try {
+    const r = await (await fetch(CHAINS.pulsechain.hexSubgraph, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+    const cur = hexDay();
+    return (r.data?.stakeStarts || []).filter(s => parseInt(s.endDay) >= cur)
+      .map(s => ({ chain:'pulsechain', principal: parseInt(s.stakedHearts)/1e8, tShares: parseFloat(s.stakeTShares), startDay: parseInt(s.startDay), endDay: parseInt(s.endDay) }));
+  } catch(e) { console.error('pHEX stakes', e); return []; }
+}
+/// eHEX stakes via on-chain reads: stakeCount(addr) then stakeLists(addr,i) decoded.
+async function fetchEthHexStakes(address) {
+  try {
+    const pad = '000000000000000000000000' + address.slice(2).toLowerCase();
+    const cntRes = await rpcCall('ethereum', HEX_ADDR, '0x33060d90' + pad); // stakeCount(address)
+    const cnt = cntRes ? parseInt(cntRes, 16) : 0;
+    if (!cnt) return [];
+    const cur = hexDay();
+    const results = await Promise.all(Array.from({length: cnt}, (_, i) =>
+      rpcCall('ethereum', HEX_ADDR, '0x2607443b' + pad + i.toString(16).padStart(64, '0')))); // stakeLists(address,uint256)
+    const out = [];
+    for (const res of results) {
+      if (!res || res.length < 2 + 64*5) continue;
+      const w = k => BigInt('0x' + res.slice(2 + k*64, 2 + (k+1)*64));
+      // struct: [stakeId, stakedHearts, stakeShares, lockedDay, stakedDays, unlockedDay, isAutoStake]
+      const endDay = Number(w(3)) + Number(w(4));
+      if (endDay < cur) continue;
+      out.push({ chain:'ethereum', principal: Number(w(1))/1e8, tShares: Number(w(2))/1e12, startDay: Number(w(3)), endDay });
+    }
+    return out;
+  } catch(e) { console.error('eHEX stakes', e); return []; }
 }
 
-function renderError(msg) {
-  document.getElementById('content').innerHTML = `<div class="error">${msg}</div>`;
+// ---------- LP positions (PulseX + 9mm V2) ----------
+async function queryDexPairs(subgraph, addrs, dexLabel) {
+  if (!addrs.length) return {};
+  const inList = addrs.map(a => `"${a}"`).join(',');
+  const q = `{pairs(where:{id_in:[${inList}]}){id reserve0 reserve1 totalSupply token0{id symbol} token1{id symbol}}}`;
+  try {
+    const r = await (await fetch(subgraph, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+    const out = {};
+    for (const p of (r.data?.pairs || [])) out[p.id.toLowerCase()] = {
+      reserve0: parseFloat(p.reserve0)||0, reserve1: parseFloat(p.reserve1)||0, totalSupply: parseFloat(p.totalSupply)||0,
+      t0: p.token0.id.toLowerCase(), t1: p.token1.id.toLowerCase(), pair: `${p.token0.symbol}/${p.token1.symbol}`, dex: dexLabel
+    };
+    return out;
+  } catch(e) { console.error('LP pairs', dexLabel, e); return {}; }
+}
+async function fetchPulseLP() {
+  const raw = rawTokenLists['pulsechain'] || [];
+  if (!raw.length) return [];
+  const addrs = raw.map(t => t.contractAddress.toLowerCase());
+  const [px, nm] = await Promise.all([
+    queryDexPairs(CHAINS.pulsechain.subgraph, addrs, 'PulseX'),
+    queryDexPairs('https://info-api.9mm.pro/subgraphs/name/pulsechain/9mm', addrs, '9mm')
+  ]);
+  const pairMap = { ...px, ...nm };
+  // Value each LP by its underlying reserves x REAL DexScreener prices (a token with no
+  // real market / not indexed prices to 0), so scam pairs with a subgraph-inflated
+  // reserveUSD fall out naturally — no sanity cap needed.
+  const under = new Set();
+  for (const pair of Object.values(pairMap)) { under.add(pair.t0); under.add(pair.t1); }
+  const prices = await fetchPrices('pulsechain', [...under]);
+  const priceOf = a => { const p = prices[a]; return (p && p.liquidity >= MIN_LIQ_USD) ? p.price : 0; };
+  const h24Of = a => { const p = prices[a]; return (p && p.liquidity >= MIN_LIQ_USD) ? (p.h24 || 0) : 0; };
+  const positions = [];
+  for (const t of raw) {
+    const a = t.contractAddress.toLowerCase(), pair = pairMap[a];
+    if (!pair || !(pair.totalSupply > 0)) continue;
+    const dec = parseInt(t.decimals) || 18, bal = parseFloat(t.balance) / Math.pow(10, dec);
+    if (!(bal > 0)) continue;
+    const share = bal / pair.totalSupply;
+    const v0 = share * pair.reserve0 * priceOf(pair.t0), v1 = share * pair.reserve1 * priceOf(pair.t1);
+    const value = v0 + v1;
+    if (value < DUST_USD) continue;
+    const h24 = value > 0 ? (v0 * h24Of(pair.t0) + v1 * h24Of(pair.t1)) / value : 0;
+    positions.push({ chain: 'pulsechain', dex: pair.dex, pairName: pair.pair, value, h24, address: a });
+  }
+  return positions.sort((a, b) => b.value - a.value);
+}
+
+/// 9mm V3 concentrated positions: compute token amounts from liquidity + ticks
+/// (Uniswap-V3 math), value by real DexScreener prices like the V2 path.
+async function fetchPulse9mmV3(address) {
+  const q = `{positions(where:{owner:"${address.toLowerCase()}", liquidity_gt:"0"}, first:100){liquidity tickLower tickUpper pool{tick sqrtPrice token0{id symbol decimals} token1{id symbol decimals}}}}`;
+  try {
+    const r = await (await fetch('https://info-api.9mm.pro/subgraphs/name/pulsechain/9mm-v3', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
+    const positions = r.data?.positions || [];
+    if (!positions.length) return [];
+    const under = new Set();
+    for (const p of positions) { under.add(p.pool.token0.id); under.add(p.pool.token1.id); }
+    const prices = await fetchPrices('pulsechain', [...under]);
+    const priceOf = a => { const p = prices[a.toLowerCase()]; return (p && p.liquidity >= MIN_LIQ_USD) ? p.price : 0; };
+    const h24Of = a => { const p = prices[a.toLowerCase()]; return (p && p.liquidity >= MIN_LIQ_USD) ? (p.h24 || 0) : 0; };
+    const sq = t => Math.pow(1.0001, t / 2);
+    const out = [];
+    for (const p of positions) {
+      const L = Number(p.liquidity), tick = Number(p.pool.tick), sqrtC = Number(p.pool.sqrtPrice) / 2 ** 96;
+      const sqrtL = sq(p.tickLower), sqrtU = sq(p.tickUpper);
+      let a0 = 0, a1 = 0;
+      if (tick < p.tickLower) a0 = L * (1 / sqrtL - 1 / sqrtU);
+      else if (tick >= p.tickUpper) a1 = L * (sqrtU - sqrtL);
+      else { a0 = L * (1 / sqrtC - 1 / sqrtU); a1 = L * (sqrtC - sqrtL); }
+      const amt0 = a0 / 10 ** p.pool.token0.decimals, amt1 = a1 / 10 ** p.pool.token1.decimals;
+      const v0 = amt0 * priceOf(p.pool.token0.id), v1 = amt1 * priceOf(p.pool.token1.id);
+      const value = v0 + v1;
+      if (!isFinite(value) || value < DUST_USD) continue;
+      const h24 = value > 0 ? (v0 * h24Of(p.pool.token0.id) + v1 * h24Of(p.pool.token1.id)) / value : 0;
+      out.push({ chain: 'pulsechain', dex: '9mm V3', pairName: `${p.pool.token0.symbol}/${p.pool.token1.symbol}`, value, h24 });
+    }
+    return out;
+  } catch(e) { console.error('9mm V3', e); return []; }
+}
+
+async function loadStakesAndLP(address) {
+  const [pls, eth, pMeta, eMeta] = await Promise.all([
+    fetchPulseHexStakes(address), fetchEthHexStakes(address), hexPriceFor('pulsechain'), hexPriceFor('ethereum')
+  ]);
+  hexMeta = { pulsechain: pMeta, ethereum: eMeta };
+  // The daily-payout history is large (~4.6MB/chain), so only pull it for chains that
+  // actually have stakes; it's cached across the session once fetched.
+  await Promise.all([ pls.length && loadHexPayouts('pulsechain'), eth.length && loadHexPayouts('ethereum') ].filter(Boolean));
+  const withValue = (s, price) => {
+    const y = stakeYieldHex(s.chain, s.tShares, s.startDay, s.endDay);
+    const totalHex = s.principal + y;
+    return { ...s, yieldHex: y, totalHex, value: totalHex * price };
+  };
+  currentStakes = [ ...pls.map(s => withValue(s, pMeta.price)), ...eth.map(s => withValue(s, eMeta.price)) ].filter(s => s.value >= DUST_USD).sort((a, b) => b.value - a.value);
+  renderBody();
+  const [v2lp, v3lp] = await Promise.all([ fetchPulseLP(), fetchPulse9mmV3(address) ]);
+  currentLP = [...v2lp, ...v3lp].sort((a, b) => b.value - a.value);
+  renderBody();
 }
 
 async function loadWallet(addressOverride) {
   let address = addressOverride || document.getElementById('addrInput')?.value?.trim();
   if (!address) return;
-
   const params = new URLSearchParams(window.location.search);
   let displayName = params.get('name') || '';
-
-  // Resolve .pls names to addresses
-  if (address.endsWith('.pls')) {
+  const lower = address.toLowerCase();
+  if (lower.endsWith('.pls') || lower.endsWith('.eth')) {
     displayName = displayName || address;
     document.getElementById('walletTitle').textContent = displayName;
     document.getElementById('walletSubtitle').textContent = 'Resolving...';
     renderLoading();
-    try {
-      const resolved = await resolvePLSName(address);
-      if (!resolved) {
-        renderError('Could not resolve "' + address + '". Check the name and try again.');
-        return;
-      }
-      address = resolved;
-    } catch (e) {
-      renderError('Failed to resolve .pls name.');
-      return;
-    }
+    try { const resolved = await resolveName(lower); if (!resolved) { renderError('Could not resolve "'+address+'".'); return; } address = resolved; }
+    catch(e) { renderError('Failed to resolve name.'); return; }
   }
-
-  const url = new URL(window.location);
-  url.searchParams.set('wallet', address);
-  if (displayName) url.searchParams.set('name', displayName);
-  history.replaceState({}, '', url);
-
+  const url = new URL(window.location); url.searchParams.set('wallet', address); if (displayName) url.searchParams.set('name', displayName); history.replaceState({},'',url);
   document.getElementById('walletTitle').textContent = displayName || shortAddr(address);
-  document.getElementById('walletSubtitle').textContent = displayName ? shortAddr(address) : 'PulseChain Portfolio';
+  document.getElementById('walletSubtitle').textContent = displayName ? shortAddr(address) : 'Portfolio';
   renderLoading();
-
   try {
-    const [tokens, plsWei] = await Promise.all([
-      fetchTokens(address),
-      fetchPLSBalance(address)
-    ]);
-
-    const addrs = tokens.map(t => t.contractAddress.toLowerCase());
-    addrs.push(WPLS);
-
-    const prices = await fetchPrices([...new Set(addrs)]);
-
-    const wplsData = prices[WPLS] || { price: 0, h1: 0, h6: 0, h24: 0 };
-    let tokenValues = [];
-
-    // PLS
-    const plsBalance = parseFloat(plsWei) / 1e18;
-    if (plsBalance > 0 && wplsData.price > 0) {
-      tokenValues.push({
-        symbol: 'PLS', address: WPLS,
-        value: plsBalance * wplsData.price,
-        h1: wplsData.h1, h6: wplsData.h6, h24: wplsData.h24,
-        d7: null, d30: null
-      });
-    }
-
-    // ERC-20 tokens
-    for (const t of tokens) {
-      const addr = t.contractAddress.toLowerCase();
-      const p = prices[addr];
-      if (!p || p.price <= 0) continue;
-      if (isSuspicious(t.name, t.symbol)) continue;
-      if (p.liquidity < 50) continue;
-
-      const decimals = parseInt(t.decimals) || 18;
-      const balance = parseFloat(t.balance) / Math.pow(10, decimals);
-      const value = balance * p.price;
-      if (value < 0.01) continue;
-
-      tokenValues.push({
-        symbol: p.symbol || t.symbol, address: addr,
-        value, h1: p.h1, h6: p.h6, h24: p.h24,
-        d7: null, d30: null
-      });
-    }
-
-    // Deduplicate
-    const bySymbol = {};
-    for (const t of tokenValues) {
-      if (!bySymbol[t.symbol] || t.value > bySymbol[t.symbol].value) {
-        bySymbol[t.symbol] = t;
-      }
-    }
-    tokenValues = Object.values(bySymbol).sort((a, b) => b.value - a.value);
-
-    const total = tokenValues.reduce((s, t) => s + t.value, 0);
-
-    if (total < 0.01) {
-      renderError('No token holdings found for this wallet.');
-      return;
-    }
-
-    renderCard(address, total, tokenValues);
-
-    // Fetch 7d/30d data from CoinGecko in the background for all displayed tokens
-    const displayedAddrs = [...new Set(tokenValues.slice(0, 6).map(t => t.address))];
-    fetchHistoricalChanges(displayedAddrs).then(hist => {
-      for (const t of currentTokens) {
-        const h = hist[t.address];
-        if (h) { t.d7 = h.d7; t.d30 = h.d30; }
-      }
-      // If user is already viewing 7d/30d, refresh the display
-      if (currentPeriod === 'd7' || currentPeriod === 'd30') {
-        updateDiffDisplay();
-        document.querySelectorAll('.token-change[data-addr]').forEach(el => {
-          const token = currentTokens.find(t => t.address === el.dataset.addr);
-          if (!token) return;
-          const val = token[currentPeriod] || 0;
-          el.className = 'token-change ' + (val >= 0 ? 'up' : 'down');
-          el.textContent = formatPct(val);
-        });
-      }
+    const perChain = await Promise.all(CHAIN_ORDER.map(c => loadChain(c, address).catch(e=>{ console.error(c,e); return []; })));
+    currentTokens = perChain.flat();
+    if (!currentTokens.reduce((s,t)=>s+t.value,0)) { renderError('No token holdings found for this wallet.'); return; }
+    enabledChains = new Set(CHAIN_ORDER.filter(c => chainCount(c) > 0)); // every chain with holdings starts on
+    showAllTokens = false; lastSparkline = null; currentStakes = null; currentLP = null;
+    renderBody();
+    loadStakesAndLP(address);
+    // PulseChain history (7d/30d + value sparkline) in the background
+    const plsAddrs = [...new Set(currentTokens.filter(t=>t.chain==='pulsechain').sort((a,b)=>b.value-a.value).slice(0,HISTORY_TOKEN_CAP).map(t=>t.address))];
+    fetchHistorical(plsAddrs).then(hist=>{
+      currentHistory = hist.byToken;
+      for (const t of currentTokens) { const h = hist.changes[t.address]; if (h && t.chain==='pulsechain') { t.d7=h.d7; t.d30=h.d30; } }
+      const { series, is30dHigh } = reconstructValueHistory(hist.byToken);
+      if (enabledChains.has('pulsechain')) renderSparkline(series, is30dHigh);
+      if (currentPeriod==='d7'||currentPeriod==='d30') setPeriod(currentPeriod);
     });
-  } catch (e) {
-    renderError('Failed to load wallet data. Please check the address and try again.');
-    console.error(e);
-  }
+  } catch(e) { renderError('Failed to load wallet data.'); console.error(e); }
 }
 
-// Auto-load if wallet param in URL
+// ---- iOS "get the app" banner ----
+function isIOS() {
+  const ua = navigator.userAgent || '';
+  return /iP(hone|ad|od)/.test(ua) || (navigator.platform === 'MacIntel' && (navigator.maxTouchPoints || 0) > 1);
+}
+function dismissBanner() {
+  const b = document.getElementById('appBanner'); if (b) b.style.display = 'none';
+  try { localStorage.setItem('ccBannerDismissed', '1'); } catch(e) {}
+}
+function maybeShowBanner() {
+  let dismissed = false; try { dismissed = localStorage.getItem('ccBannerDismissed') === '1'; } catch(e) {}
+  if (isIOS() && !dismissed) { const b = document.getElementById('appBanner'); if (b) b.style.display = 'flex'; }
+}
+
+// ---- change the viewed wallet without editing the URL ----
+function toggleWalletInput() {
+  const el = document.getElementById('walletInput');
+  const show = el.style.display === 'none' || !el.style.display;
+  el.style.display = show ? 'flex' : 'none';
+  if (show) { const i = document.getElementById('changeAddr'); i.value = ''; i.focus(); }
+}
+function submitWallet() {
+  const v = document.getElementById('changeAddr').value.trim();
+  if (!v) return;
+  document.getElementById('walletInput').style.display = 'none';
+  const url = new URL(window.location); url.searchParams.delete('name'); history.replaceState({}, '', url);
+  loadWallet(v);
+}
+
+// Close the sparkline popover when tapping elsewhere.
+document.addEventListener('click', e => {
+  if (!e.target.closest('.spark-note')) document.querySelectorAll('.spark-pop.show').forEach(p => { p.classList.remove('show'); p.previousElementSibling?.classList.remove('open'); });
+});
+
 (function() {
+  maybeShowBanner();
   const params = new URLSearchParams(window.location.search);
-  const wallet = params.get('wallet');
-  const name = params.get('name');
+  const wallet = params.get('wallet'), name = params.get('name');
   if (wallet) {
     document.getElementById('walletTitle').textContent = name || shortAddr(wallet);
-    document.getElementById('walletSubtitle').textContent = name ? shortAddr(wallet) : 'PulseChain Portfolio';
+    document.getElementById('walletSubtitle').textContent = name ? shortAddr(wallet) : 'Portfolio';
     document.getElementById('inputSection')?.remove();
     loadWallet(wallet);
   } else {
     document.getElementById('walletTitle').textContent = 'Ching Ching';
-    document.getElementById('walletSubtitle').textContent = 'PulseChain Portfolio';
+    document.getElementById('walletSubtitle').textContent = 'Portfolio';
   }
 })();
 </script>
-
 </body>
 </html>
