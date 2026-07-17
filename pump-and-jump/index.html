@@ -176,7 +176,7 @@ h1 .accent { color:#E4572E; }
   </div>
   <div id="nameWrap">
     <div id="nameEditor">
-      <input id="pname" maxlength="16" placeholder="name for leaderboard" autocomplete="off">
+      <input id="pname" maxlength="20" placeholder="name for leaderboard" autocomplete="off">
       <button id="saveNameBtn" class="btn secondary" style="padding:8px 16px; font-size:13px; margin-top:0; vertical-align:top;">SAVE</button>
     </div>
     <div id="namedRow" class="hidden" style="font-size:13px; color:rgba(58,54,48,0.65);">
@@ -330,38 +330,62 @@ const WEATHER = [
 ];
 let weatherMap = null;
 
+/// Days of chart per weather spell. Per-DAY weather meant a new target every
+/// ~0.2s at speed, so the sky strobed instead of telling the chart's story. A
+/// spell now covers a whole stretch of the chart (~11s of flying at base speed).
+const WEATHER_BLOCK = 48;
+
 function computeWeatherMap(){
-  // Weather tracks the DIRECTION of the chart you are flying over:
-  // pumping = sunshine, dipping = rain, crashing = storm, crabbing = snow.
+  // Weather tracks the DIRECTION of the chart you are flying over, judged over a
+  // block rather than a single day: pumping = sunshine, dipping = rain,
+  // crashing = storm, crabbing = snow.
   const p = terrain.prices, n = terrain.n, w = new Int8Array(terrain.nWrap);
-  for (let i=0;i<n;i++){
-    const t1 = p[i]/p[Math.max(0,i-1)] - 1;       // 1-day move
-    const t3 = p[i]/p[Math.max(0,i-3)] - 1;       // 3-day move
-    if (t1 <= -0.12 || t3 <= -0.18) w[i] = 3;     // crash → storm
-    else if (t1 <= -0.03 || t3 <= -0.06) w[i] = 1;// dip → rain
-    else if (t1 >= 0.03 || t3 >= 0.08) w[i] = 0;  // pump → sun
-    else w[i] = 2;                                // sideways → snow
+  for (let b=0; b<n; b+=WEATHER_BLOCK){
+    const end = Math.min(n-1, b+WEATHER_BLOCK-1);
+    let peak = 0, dd = 0;
+    for (let i=b;i<=end;i++){
+      if (p[i] > peak) peak = p[i];
+      if (peak > 0) dd = Math.min(dd, p[i]/peak - 1);   // worst drawdown in the block
+    }
+    const move = p[end]/p[b] - 1;                       // net move across the block
+    let s;
+    if (dd <= -0.30) s = 3;             // it crashed somewhere in here → storm
+    else if (move <= -0.06) s = 1;      // net down → rain
+    else if (move >= 0.06) s = 0;       // net up → sun
+    else s = 2;                         // crabbing → snow
+    for (let i=b;i<=end;i++) w[i] = s;
   }
   for (let i=n;i<terrain.nWrap;i++) w[i]=w[n-1];
-  // smooth: remove 1-day flickers
-  for (let i=1;i<w.length-1;i++) if (w[i]!==w[i-1] && w[i]!==w[i+1]) w[i]=w[i-1];
   weatherMap = w;
 }
 
-const wx = { cur:0, prev:0, t:1, flash:0, nextBolt:0 };
+const wx = { cur:0, prev:0, t:1, flash:0, nextBolt:0, dwell:0 };
+/// Seconds to cross-fade one spell into the next, and the minimum a spell must
+/// hold before another can start. The dwell is what stops fast stretches of
+/// chart (or a boosted run) from flicking through skies.
+const WEATHER_FADE = 5.0;
+const WEATHER_MIN_DWELL = 10;
+/// smoothstep, so the fade eases in and out instead of starting and stopping dead
+function wEase(){ const t = wx.t; return t*t*(3-2*t); }
 function weatherAt(x){ const i=Math.floor(wrapX(x)/SEG); return weatherMap[Math.min(i,weatherMap.length-1)]; }
 function updateWeather(dt){
+  wx.dwell += dt;
   const target = weatherAt(camX + W*0.6);
-  if (target !== wx.cur){ wx.prev = wx.cur; wx.cur = target; wx.t = 0; }
-  wx.t = Math.min(1, wx.t + dt/2.2);
+  // only start a new spell once the last fade has finished AND it has had its turn
+  if (target !== wx.cur && wx.t >= 1 && wx.dwell >= WEATHER_MIN_DWELL){
+    wx.prev = wx.cur; wx.cur = target; wx.t = 0; wx.dwell = 0;
+  }
+  wx.t = Math.min(1, wx.t + dt/WEATHER_FADE);
   if (wx.cur===3){ // storm lightning
     wx.nextBolt -= dt;
-    if (wx.nextBolt<=0){ wx.flash=0.9; wx.nextBolt=2.5+Math.random()*4; sfx('thunder'); }
+    // The flash is welcome on the menu; the bang is not. updateWeather runs in
+    // every state, so gate the sound on actually being in a run.
+    if (wx.nextBolt<=0){ wx.flash=0.9; wx.nextBolt=2.5+Math.random()*4; if (state==='playing') sfx('thunder'); }
   }
   wx.flash = Math.max(0, wx.flash - dt*2.2);
 }
-function wmix(key){ return lerp(WEATHER[wx.prev][key], WEATHER[wx.cur][key], wx.t); }
-function wmixCol(key,idx){ return rgbLerp(WEATHER[wx.prev][key][idx]||WEATHER[wx.prev][key], WEATHER[wx.cur][key][idx]||WEATHER[wx.cur][key], wx.t); }
+function wmix(key){ return lerp(WEATHER[wx.prev][key], WEATHER[wx.cur][key], wEase()); }
+function wmixCol(key,idx){ return rgbLerp(WEATHER[wx.prev][key][idx]||WEATHER[wx.prev][key], WEATHER[wx.cur][key][idx]||WEATHER[wx.cur][key], wEase()); }
 
 /* particles: rain / snow / motes, all little paper bits */
 const parts = [];
@@ -974,7 +998,7 @@ function sfx(name){
       ping(392,0.3,0.15,0.5); ping(311,0.3,0.15,0.68); ping(233,0.5,0.15,0.86); // sad jingle
       break;
     }
-    case 'thunder': noise(1.1,'lowpass',300,60,0.35); break;
+    case 'thunder': noise(1.1,'lowpass',300,60,0.15); break;   // background weather, not a jump-scare
     case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
     case 'shieldUp': { ping(660,0.16,0.18); ping(990,0.22,0.2,0.08); ping(1320,0.3,0.18,0.16); break; }
     case 'block':    { noise(0.18,'bandpass',1800,500,0.5); ping(440,0.24,0.2); break; }
@@ -996,6 +1020,53 @@ function sfx(name){
 function setMute(m){
   muted = m; localStorage.setItem('pnj_mute', m?'1':'0');
   el('muteBtn').innerHTML = m ? '&#128263;' : '&#128266;';
+}
+
+
+/* =====================================================================
+   MUSIC — a little arpeggio loop that quickens as the run speeds up.
+   Synthesized like everything else here: no audio files, no dependencies.
+   ===================================================================== */
+const MUS_LEAD = [0,7,12,7, 3,10,15,10, 5,12,17,12, 3,10,7,3];  // A minor wander
+const MUS_BASS = [0,3,5,3];                                      // a step under each bar
+const MUS_ROOT = 220;                                            // A3
+const mus = { next:0, step:0, on:false };
+
+function musicStart(){
+  const ac = audio(); if (!ac) return;
+  mus.step = 0; mus.next = ac.currentTime + 0.06; mus.on = true;
+}
+function musicStop(){ mus.on = false; }
+
+function musNote(semi, when, dur, type, vol){
+  if (!AC) return;
+  const o = AC.createOscillator(); o.type = type;
+  o.frequency.value = MUS_ROOT * Math.pow(2, semi/12);
+  const g = AC.createGain();
+  g.gain.setValueAtTime(0.0001, when);
+  g.gain.exponentialRampToValueAtTime(vol, when + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  o.connect(g); g.connect(AC.destination);
+  o.start(when); o.stop(when + dur + 0.02);
+}
+
+/// Schedules a little ahead of the clock so the beat stays steady even if a
+/// frame is late. Kept quiet: the ditty sits under the sound effects.
+function musicTick(){
+  if (!mus.on || muted || !AC || state !== 'playing') return;
+  if (mus.next < AC.currentTime) mus.next = AC.currentTime + 0.02;   // never burst-catch-up
+  const k = clamp((scrollSpeed() - BASE_SPEED) / (MAX_SPEED - BASE_SPEED), 0, 1);
+  const stepDur = lerp(0.30, 0.155, k);        // the tune chases the scroll speed
+  while (mus.next < AC.currentTime + 0.15){
+    const i = mus.step % MUS_LEAD.length;
+    musNote(MUS_LEAD[i], mus.next, stepDur*0.75, 'square', 0.032);
+    if (i % 4 === 0){
+      const b = MUS_BASS[((mus.step/4)|0) % MUS_BASS.length] - 24;
+      musNote(b, mus.next, stepDur*2.2, 'triangle', 0.05);
+    }
+    mus.next += stepDur;
+    mus.step++;
+  }
 }
 
 /* =====================================================================
@@ -1041,6 +1112,33 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
    SCORES / LEADERBOARD
    ===================================================================== */
 let lastRank = null;
+/// The board's standing high score, snapshotted when a run starts (it does not
+/// need to be live). Cached so it shows instantly and survives a dead network.
+let hiScore = parseInt(localStorage.getItem('pnj_hi_'+GAME) || '0', 10) || 0;
+async function refreshHiScore(){
+  try {
+    const r = await fetch(`${API}/scores?game=${GAME}&period=alltime`);
+    const j = await r.json();
+    if (j && j.scores && j.scores.length){
+      hiScore = Number(j.scores[0].score) || 0;
+      localStorage.setItem('pnj_hi_'+GAME, String(hiScore));
+    }
+  } catch(e){}
+}
+/// One-shot token for THIS run, issued by the server when the run opens. The
+/// score is unverifiable, but the server timing the run is not: a submitted run
+/// must be at least as old as it claims to be.
+let runSession = null;
+async function openRunSession(){
+  runSession = null;
+  try {
+    const r = await fetch(API+'/session', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ game: GAME, client_id: clientId, client_secret: clientSecret }),
+    });
+    if (r.ok) runSession = (await r.json()).session || null;
+  } catch(e){}
+}
 let best = parseInt(localStorage.getItem('pj_best')||'0',10) || 0;
 function playerName(){ return (localStorage.getItem('pnj_name')||'').trim(); }
 
@@ -1050,7 +1148,7 @@ async function submitScore(run){
     await fetch(API+'/scores', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        game: GAME, client_id: clientId, client_secret: clientSecret, name: name || 'anon',
+        game: GAME, client_id: clientId, client_secret: clientSecret, session: runSession, name: name || 'anon',
         score: run.score, distance: run.distance, duration_ms: run.durationMs,
         variant: variantKey, day: terrain.dateDay,
       }),
@@ -1214,10 +1312,11 @@ function scrollSpeed(){
 }
 
 function startRun(){
+  musicStop();
   camX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
   rings.length = 0; puffs.length = 0; thrustT = 0;
   shield = 0; shieldFlash = 0;
-  wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1;
+  wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1; wx.dwell = 0;
   spawnCourse(); resetPlayer();   // new obstacle/collectible layout every run
   state = 'countdown'; countdownT = 3; goT = 0; overShown=false;
   runStartTs = performance.now();
@@ -1226,6 +1325,8 @@ function startRun(){
   el('board').classList.add('hidden');
   el('tapStart').classList.remove('hidden');
   setTimeout(()=>el('tapStart').classList.add('hidden'), 2600);
+  openRunSession();          // opens the run server-side; the score needs its token
+  refreshHiScore();          // snapshot the board's best for this run's HUD
   track('game_started', {});
   sfx('click');
 }
@@ -1233,6 +1334,7 @@ function startRun(){
 function die(cause){
   if (state!=='playing') return;
   state = 'dead';
+  musicStop();
   sfx('crash');
   // paper shreds
   const px = W*PLAYER_SX, py = player.y - 18;
@@ -1249,6 +1351,7 @@ function die(cause){
   el('champWrap').classList.add('hidden');
   submitScore(lastRun).then(me => {
     lastRank = me;
+    if (lastRun && lastRun.score > hiScore){ hiScore = lastRun.score; localStorage.setItem('pnj_hi_'+GAME, String(hiScore)); }
     if (me && me.rank === 1 && me.score === lastRun.score) showChampion(lastRun, me, 'daily');
   });
   setTimeout(()=>{
@@ -1279,7 +1382,7 @@ function restart(){
   startRun();
 }
 function saveName(){
-  const n = el('pname').value.trim().slice(0,16);
+  const n = el('pname').value.trim().slice(0,20);
   if (n) localStorage.setItem('pnj_name', n);
   return n;
 }
@@ -1329,6 +1432,7 @@ function frame(ts){
       state = 'playing'; goT = 0.7;
       runStartTs = performance.now();
       sfx('go');
+      musicStart();
     }
   } else if (state==='playing'){
     runTime += dt;
@@ -1343,6 +1447,7 @@ function frame(ts){
     updateParticles(dt, spd);
     updateThrust(dt, spd);
     shieldFlash = Math.max(0, shieldFlash - dt);
+    musicTick();
   } else if (state==='dead'){
     for (const b of deathBits){ b.vy += 1400*dt; b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt; }
     updateWeather(dt); updateParticles(dt, 0);
@@ -1420,6 +1525,11 @@ function render(){
   if (state==='dead') drawDeathBits();
   drawParticles();
   drawFloaters();
+  // Weather is scenery: it goes UNDER the UI. Drawing the storm's dim over the
+  // HUD was knocking up to 30% of the contrast off the score.
+  const dark = wmix('dark');
+  if (dark>0.01){ ctx.fillStyle=`rgba(38,36,48,${dark})`; ctx.fillRect(0,0,W,H); }
+
   if (state==='playing' || state==='dead' || state==='countdown') drawHUD();
 
   // 3-2-1 countdown + GO! flash
@@ -1446,9 +1556,7 @@ function render(){
     ctx.restore();
   }
 
-  // storm darkening + lightning flash
-  const dark = wmix('dark');
-  if (dark>0.01){ ctx.fillStyle=`rgba(38,36,48,${dark})`; ctx.fillRect(0,0,W,H); }
+  // lightning still washes over everything, UI included: that one is deliberate
   if (wx.flash>0.02){ ctx.fillStyle=`rgba(255,255,250,${wx.flash*0.55})`; ctx.fillRect(0,0,W,H); }
 }
 
@@ -1548,25 +1656,176 @@ function drawFloaters(){
   }
 }
 
+
+/* =====================================================================
+   ARCADE FONT — a 5x7 bitmap, drawn as pixels. No webfont: the games ship
+   zero dependencies and must render offline inside the iOS WKWebView.
+   ===================================================================== */
+const FONT5x7 = {
+  '0':[0x0E,0x11,0x13,0x15,0x19,0x11,0x0E], '1':[0x04,0x0C,0x04,0x04,0x04,0x04,0x0E],
+  '2':[0x0E,0x11,0x01,0x02,0x04,0x08,0x1F], '3':[0x1F,0x02,0x04,0x02,0x01,0x11,0x0E],
+  '4':[0x02,0x06,0x0A,0x12,0x1F,0x02,0x02], '5':[0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E],
+  '6':[0x06,0x08,0x10,0x1E,0x11,0x11,0x0E], '7':[0x1F,0x01,0x02,0x04,0x08,0x08,0x08],
+  '8':[0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E], '9':[0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C],
+  'A':[0x0E,0x11,0x11,0x1F,0x11,0x11,0x11], 'B':[0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E],
+  'C':[0x0E,0x11,0x10,0x10,0x10,0x11,0x0E], 'D':[0x1C,0x12,0x11,0x11,0x11,0x12,0x1C],
+  'E':[0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F], 'F':[0x1F,0x10,0x10,0x1E,0x10,0x10,0x10],
+  'G':[0x0E,0x11,0x10,0x17,0x11,0x11,0x0F], 'H':[0x11,0x11,0x11,0x1F,0x11,0x11,0x11],
+  'I':[0x0E,0x04,0x04,0x04,0x04,0x04,0x0E], 'J':[0x07,0x02,0x02,0x02,0x02,0x12,0x0C],
+  'K':[0x11,0x12,0x14,0x18,0x14,0x12,0x11], 'L':[0x10,0x10,0x10,0x10,0x10,0x10,0x1F],
+  'M':[0x11,0x1B,0x15,0x15,0x11,0x11,0x11], 'N':[0x11,0x11,0x19,0x15,0x13,0x11,0x11],
+  'O':[0x0E,0x11,0x11,0x11,0x11,0x11,0x0E], 'P':[0x1E,0x11,0x11,0x1E,0x10,0x10,0x10],
+  'Q':[0x0E,0x11,0x11,0x11,0x15,0x12,0x0D], 'R':[0x1E,0x11,0x11,0x1E,0x14,0x12,0x11],
+  'S':[0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E], 'T':[0x1F,0x04,0x04,0x04,0x04,0x04,0x04],
+  'U':[0x11,0x11,0x11,0x11,0x11,0x11,0x0E], 'V':[0x11,0x11,0x11,0x11,0x11,0x0A,0x04],
+  'W':[0x11,0x11,0x11,0x15,0x15,0x1B,0x11], 'X':[0x11,0x11,0x0A,0x04,0x0A,0x11,0x11],
+  'Y':[0x11,0x11,0x0A,0x04,0x04,0x04,0x04], 'Z':[0x1F,0x01,0x02,0x04,0x08,0x10,0x1F],
+  '-':[0x00,0x00,0x00,0x1F,0x00,0x00,0x00], ',':[0x00,0x00,0x00,0x00,0x0C,0x04,0x08],
+  '.':[0x00,0x00,0x00,0x00,0x00,0x0C,0x0C], '!':[0x04,0x04,0x04,0x04,0x04,0x00,0x04],
+  ' ':[0,0,0,0,0,0,0],
+};
+const pxTextWidth = (txt, px) => txt.length * 6 * px - px;
+
+/** Draw text as chunky pixels. align: 'left' | 'center' | 'right'.
+    `outline` traces a 1px edge around the glyphs. The edge is what makes ink
+    readable over ANY sky, which matters because the storm sky is mid-grey: a
+    contrast dead zone where neither dark nor light ink can win on its own.
+    It must stay ~1 SCREEN px. An earlier version offset a copy by a whole font
+    unit, which is the width of the strokes themselves, so it doubled every
+    stroke and filled the counters of 0/5/6/8. That read as mud. */
+function pxText(txt, x, y, px, col, align, outline){
+  if (outline){
+    const o = 1;                       // one screen pixel, never one font unit
+    pxGlyphs(txt, x-o, y, px, outline, align);
+    pxGlyphs(txt, x+o, y, px, outline, align);
+    pxGlyphs(txt, x, y-o, px, outline, align);
+    pxGlyphs(txt, x, y+o, px, outline, align);
+  }
+  pxGlyphs(txt, x, y, px, col, align);
+}
+function pxGlyphs(txt, x, y, px, col, align){
+  txt = String(txt).toUpperCase();
+  const w = pxTextWidth(txt, px);
+  let sx = align === 'center' ? Math.round(x - w/2) : align === 'right' ? Math.round(x - w) : Math.round(x);
+  ctx.fillStyle = col;
+  for (const ch of txt){
+    const g = FONT5x7[ch];
+    if (g){
+      for (let r=0;r<7;r++){
+        const bits = g[r];
+        if (!bits) continue;
+        // merge horizontal runs into one rect each: fewer draw calls per glyph
+        let c = 0;
+        while (c < 5){
+          if (bits & (1 << (4-c))){
+            let run = 1;
+            while (c+run < 5 && (bits & (1 << (4-(c+run))))) run++;
+            ctx.fillRect(sx + c*px, y + r*px, run*px, px);
+            c += run;
+          } else c++;
+        }
+      }
+    }
+    sx += 6*px;
+  }
+}
+
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+/// Ink for the live score: gold once the run beats the standing high score,
+/// blue once it beats your own best, otherwise plain.
+/// HUD ink. The sky is not one colour: it runs from cream sunshine to a dark
+/// storm, so a single fixed ink cannot stay readable on it. Measured against the
+/// real skies, bright gold was 1.89:1 on sun and 1.1:1 in storm, i.e. invisible.
+/// So each ink comes in a pair and we pick against the CURRENT sky.
+/// (An offset shadow was tried first and removed: at one font unit it is as wide
+/// as the glyph strokes, so it doubles every stroke and fills 0/5/6/8's holes.)
+const INK = {
+  plain: ['rgba(46,42,36,0.92)', 'rgba(252,250,245,0.95)'],  // [on light sky, on dark sky]
+  dim:   ['rgba(46,42,36,0.42)', 'rgba(252,250,245,0.55)'],
+  best:  ['#2F6FE4', '#8FBEFF'],                              // blue: personal best
+  hi:    ['#F5B32B', '#F5B32B'],                              // gold: board's best
+};
+/// The big numbers carry a 1px edge in the opposite tone. The outline, not the
+/// sky, then decides legibility, so the gold can stay properly gold instead of
+/// being dulled to brown chasing contrast it cannot win on a mid-grey storm.
+const EDGE_DARK  = 'rgba(38,28,8,0.92)';
+const EDGE_LIGHT = 'rgba(252,250,245,0.92)';
+/// What the HUD is actually sitting on: the sky, plus the storm dim over it.
+function onDarkSky(){
+  const c = wmixCol('sky', 0), d = wmix('dark');
+  const r = c[0]*(1-d) + 38*d, g = c[1]*(1-d) + 36*d, b = c[2]*(1-d) + 48*d;
+  return (0.2126*r + 0.7152*g + 0.0722*b) < 150;
+}
+const ink = (name, dark) => INK[name][dark ? 1 : 0];
+function scoreInk(dark){
+  const s = Math.round(score);
+  if (hiScore > 0 && s > hiScore) return ink('hi', dark);
+  if (best > 0 && s > best) return ink('best', dark);
+  return ink('plain', dark);
+}
+
 function drawHUD(){
-  const safeTop = 12;
-  // score (top-right)
-  ctx.textAlign='right'; ctx.textBaseline='top';
-  ctx.fillStyle='rgba(46,42,36,0.9)';
-  ctx.font='900 26px -apple-system, sans-serif';
-  ctx.fillText(Math.round(score).toLocaleString(), W-62, safeTop+4);
-  ctx.font='700 11px -apple-system, sans-serif';
-  ctx.fillStyle='rgba(46,42,36,0.45)';
-  ctx.fillText('SCORE', W-62, safeTop+34);
-  // best (top-left)
-  ctx.textAlign='left';
-  ctx.fillText('BEST '+best.toLocaleString(), 14, safeTop+4);
+  const safeTop = 10;
+  const tiny = W < 520;
+  const onDark = onDarkSky();
+  const labelPx = tiny ? 1.1 : 1.5;      // pixel size of the small labels
+  const sidePx  = tiny ? 1.8 : 2.4;      // pixel size of the side numbers
+  const bigPx   = tiny ? 3.4 : 4.6;      // pixel size of the live score
+  const labelY  = safeTop;
+  const valueY  = safeTop + 7*labelPx + (tiny ? 4 : 6);
+  const dim = ink('dim', onDark);
+
+  // ---- YOUR BEST (left) ---- short labels on narrow screens, where the three
+  //      blocks and the mute button are fighting for the same strip
+  pxText(tiny ? 'BEST' : 'YOUR BEST', 14, labelY, labelPx, dim, 'left');
+  pxText(best.toLocaleString(), 14, valueY, sidePx, dim, 'left');
+
+  // ---- SCORE + HI-SCORE, centred as one group ----
+  //      The hi-score sits right beside the live score in gold, so the target
+  //      you are chasing is next to the number you are chasing it with.
+  const scoreCol = scoreInk(onDark);
+  const txt = Math.round(score).toLocaleString();
+  const hiTxt = hiScore > 0 ? hiScore.toLocaleString() : '----';
+  // Score and hi-score are peers, so they share a size. Big numbers on a narrow
+  // phone would run into the best block or the mute button, so the pair shrinks
+  // to whatever room is actually between them rather than overlapping.
+  // Both numbers are ANCHORED to a fixed divider rather than centred as a group.
+  // Centring meant every new digit re-centred the pair, so the score and the
+  // hi-score both twitched sideways as you scored. Now the score's right edge is
+  // pinned (digits grow leftward, and the fastest-changing ones digit never
+  // moves) and the hi-score's left edge is pinned, so it never moves at all.
+  const leftEnd = 14 + pxTextWidth(best.toLocaleString(), sidePx);
+  const half = (tiny ? 24 : 44) / 2;                 // the breathing room between them
+  const divider = Math.round(W/2);
+  const scoreRoom = (divider - half) - (leftEnd + 16);
+  const hiRoom = (W - 58) - (divider + half);
+  let px = bigPx;
+  // one shared size, shrunk only as far as the tighter side demands
+  const k = Math.min(1, scoreRoom / pxTextWidth(txt, px), hiRoom / pxTextWidth(hiTxt, px));
+  if (k < 1) px = Math.max(1.6, px * k);
+  const scoreRight = divider - half;
+  const hiLeft = divider + half;
+
+  pxText('SCORE', scoreRight, labelY, labelPx, dim, 'right');
+  if (scoreCol !== ink('plain', onDark)){
+    // a soft halo so the colour change is felt, not just seen
+    ctx.save();
+    ctx.globalAlpha = 0.26 + Math.sin(now*6)*0.10;
+    pxText(txt, scoreRight, valueY - 1, px + 0.6, scoreCol, 'right');
+    ctx.restore();
+  }
+  // a dark ink wants a light edge and vice versa
+  const scoreEdge = scoreCol === ink('hi', onDark) ? EDGE_DARK
+                  : onDark ? EDGE_DARK : EDGE_LIGHT;
+  pxText(txt, scoreRight, valueY, px, scoreCol, 'right', scoreEdge);
+
+  pxText(tiny ? 'HI' : 'HI-SCORE', hiLeft, labelY, labelPx, dim, 'left');
+  pxText(hiTxt, hiLeft, valueY, px, ink('hi', onDark), 'left', EDGE_DARK);
+
   // shields in reserve
   if (shield > 0){
-    ctx.fillStyle='#9B5CFF';
-    ctx.font='900 12px -apple-system, sans-serif';
-    ctx.fillText('\u25C9 SHIELD' + (shield > 1 ? ' x'+shield : ''), 14, safeTop+20);
+    pxText('SHIELD' + (shield > 1 ? ' X'+shield : ''), 14, valueY + 7*sidePx + 5, labelPx + 0.2,
+           onDark ? '#C9A6FF' : '#7B45D8', 'left');
   }
   // the real chart, big and bold along the bottom: full date + price
   const di = dayIndexAt(camX + W*PLAYER_SX);
@@ -1575,10 +1834,10 @@ function drawHUD(){
     const label = 'PLS · '+d.getUTCDate()+' '+MONTHS[d.getUTCMonth()]+' '+d.getUTCFullYear();
     const p = terrain.prices[di]/1e9;
     ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-    ctx.fillStyle='rgba(46,42,36,0.5)';
+    ctx.fillStyle = ink('dim', onDark);
     ctx.font='800 12px -apple-system, sans-serif';
     ctx.fillText(label, W/2, H-52);
-    ctx.fillStyle='rgba(46,42,36,0.92)';
+    ctx.fillStyle = ink('plain', onDark);
     ctx.font='900 34px -apple-system, sans-serif';
     ctx.fillText('$'+Number(p.toPrecision(4)), W/2, H-16);
   }
@@ -1765,6 +2024,7 @@ async function boot(){
   spawnCourse();
   resetPlayer();
   state = 'menu';
+  refreshHiScore();
   buildRocketPreview();
   buildOthers();
   updateStartHint();
