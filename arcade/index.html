@@ -124,8 +124,8 @@ function scene(c, W, H, sky){
   const cv=document.getElementById('cvPj'), c=cv.getContext('2d');
   c.setTransform(2,0,0,2,0,0);
   scene(c, 286, 150, ['#EAF2FA','#DCE9F5']);
-  // bike mid-backflip
-  c.save(); c.translate(150,62); c.rotate(-2.6); c.scale(1.9,1.9);
+  // bike launching off a pump (readable at thumbnail size; the arc tells the flip story)
+  c.save(); c.translate(120,74); c.rotate(-0.38); c.scale(1.9,1.9);
   for (const wxo of [-16,16]){
     c.save(); c.translate(wxo,-8);
     poly(c,[[9.5,0],[4.75,8.23],[-4.75,8.23],[-9.5,0],[-4.75,-8.23],[4.75,-8.23]],'#3A3630');
@@ -141,7 +141,7 @@ function scene(c, W, H, sky){
   c.restore();
   // motion arc
   c.strokeStyle='rgba(228,87,46,0.5)'; c.lineWidth=3; c.setLineDash([7,7]);
-  c.beginPath(); c.arc(150,105,58,-2.6,-0.5); c.stroke();
+  c.beginPath(); c.arc(150,104,62,-2.75,-0.35); c.stroke();
 })();
 </script>
 </body>

@@ -100,6 +100,41 @@ h1 .accent { color:#E4572E; }
 }
 #muteBtn { right:12px; top:calc(12px + env(safe-area-inset-top)); }
 
+
+/* ---------- cross-game thumbnails ---------- */
+.others { margin-top:16px; }
+.othersLabel { font-size:10px; font-weight:800; letter-spacing:0.14em; color:rgba(58,54,48,0.4); margin-bottom:7px; }
+.othersRow { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
+.thumb {
+  display:block; text-decoration:none; color:inherit; width:150px;
+  background:#FFFEFA; border:1px solid rgba(58,54,48,0.14);
+  padding:5px 5px 6px; transition:transform 0.12s ease, border-color 0.12s ease;
+}
+.thumb:hover { transform:translateY(-3px); border-color:#E4572E; }
+.thumb canvas { display:block; width:140px; height:64px; }
+.thumbName { font-size:11.5px; font-weight:900; color:#2E2A24; margin-top:4px; }
+.thumbName .accent { color:#E4572E; }
+
+/* ---------- champion card ---------- */
+#champWrap { margin-top:14px; }
+.champShot { position:relative; display:inline-block; max-width:340px; width:100%; line-height:0; }
+#champImg {
+  width:100%; display:block;
+  border:1px solid rgba(58,54,48,0.18); box-shadow:0 6px 18px rgba(58,54,48,0.18);
+}
+/* the download sits ON the card so it costs no panel height */
+.dlBtn {
+  position:absolute; top:7px; right:7px; width:29px; height:29px;
+  border:none; padding:0; cursor:pointer; line-height:0;
+  background:rgba(46,42,36,0.66); color:#FBF8F1;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0.9; transition:opacity 0.12s ease, transform 0.12s ease, background 0.12s ease;
+}
+.dlBtn:hover { opacity:1; transform:scale(1.09); background:#E4572E; }
+.dlBtn:active { transform:scale(0.96); }
+.champHint { font-size:10.5px; color:rgba(58,54,48,0.5); margin-top:5px; }
+.champTitle { font-size:13px; font-weight:900; color:#E4572E; letter-spacing:0.1em; margin-bottom:7px; }
+
 .hidden { display:none !important; }
 #tapStart {
   position:fixed; left:50%; bottom:18%; transform:translateX(-50%); z-index:14;
@@ -123,9 +158,9 @@ h1 .accent { color:#E4572E; }
   <div class="btn-row">
     <button id="boardBtn1" class="btn secondary">Leaderboard</button>
   </div>
-  <div class="hint" id="startHint"><span class="kbd">SPACE</span> / tap to jump &middot; <b>hold in air to backflip</b><br>land clean for flip bonuses &middot; botch the landing = rekt</div>
+  <div class="hint" id="startHint"><span class="kbd">SPACE</span> / tap to jump &middot; <b>hold in air to backflip</b><br>land clean for flip bonuses &middot; the <b>PulseChain tablet</b> blocks one hit</div>
   <div class="hint" id="bestLine"></div>
-  <div class="hint" style="margin-top:6px;"><a href="/arcade/" style="color:#E4572E; font-weight:800; text-decoration:none;">&#127918; more Ching Ching arcade</a></div>
+  <div id="otherStart" class="others"></div>
 </div>
 
 <!-- ===================== GAME OVER ===================== -->
@@ -135,7 +170,7 @@ h1 .accent { color:#E4572E; }
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
   <div class="statrow">
-    <span><b id="statDist">0</b>distance</span>
+    <span><b id="statDist">0</b>days ridden</span>
     <span><b id="statCoins">0</b>collected</span>
     <span><b id="statBest">0</b>best</span>
   </div>
@@ -157,6 +192,17 @@ h1 .accent { color:#E4572E; }
     <button id="shareBtn" class="btn secondary">Share score</button>
     <button id="boardBtn2" class="btn secondary">Leaderboard</button>
   </div>
+  <div id="champWrap" class="hidden">
+    <div class="champTitle" id="champTitle"></div>
+    <div class="champShot">
+      <img id="champImg" alt="Champion card: your score at the top of the leaderboard">
+      <button id="champDl" class="dlBtn" title="Download card" aria-label="Download card">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M7.5 10l4.5 4.5 4.5-4.5M4.5 20h15"/></svg>
+      </button>
+    </div>
+    <div class="champHint">Right click to copy &middot; or use the download button</div>
+  </div>
+  <div id="otherOver" class="others"></div>
   <div class="hint"><span class="kbd">SPACE</span> to restart</div>
 </div>
 
@@ -400,10 +446,15 @@ function spawnCourse(){
           items.push({ type:'coin', x:x+i2*46, dy, r:13, val:10 });
         }
         x += cnt*46;
-      } else if (k < 0.85){
+      } else if (k < 0.72){
         items.push({ type:'gcandle', x, dy:38, r:16, val:25 });
-      } else {
+      } else if (k < 0.88){
+        items.push({ type:'sandwich', x, dy:62 + rng()*70, r:17, val:30 });
+      } else if (k < 0.94){
         items.push({ type:'diamond', x, dy:148, r:17, val:50 });
+      } else {
+        // rarest pickup on the course: it cancels a death
+        items.push({ type:'tablet', x, dy:70 + rng()*80, r:19, val:25, shield:true });
       }
     } else {                                        // obstacles
       const k = rng();
@@ -495,26 +546,140 @@ function drawItem(it, sx){
       break;
     }
     case 'rock': {
-      poly([[-20,16],[-16,-6],[-6,-15],[8,-13],[19,-2],[21,16]], '#B9B2A4');
-      poly([[-6,-15],[8,-13],[4,16],[-8,16]], shade('#B9B2A4',-0.14));
-      poly([[8,-13],[19,-2],[21,16],[4,16]], shade('#B9B2A4',-0.24));
-      // little rolled rug on top: the rug pull
-      ctx.fillStyle = '#B23F1E';
-      ctx.fillRect(-12,-21,22,6);
-      ctx.fillStyle = shade('#B23F1E',-0.25);
-      ctx.fillRect(-12,-21,22,2.4);
+      // the Rug Pull: a persian rug, half rolled up and ready to be yanked
+      const R='#A32C3C', G='#D9A441', C='#F5E7C8';
+      // flat section still on the chart
+      poly([[-27,16],[9,16],[9,4],[-27,4]], R, 'rgba(58,54,48,0.35)');
+      ctx.strokeStyle=G; ctx.lineWidth=1.5;
+      ctx.beginPath();
+      ctx.moveTo(-26,6.5); ctx.lineTo(8,6.5);
+      ctx.moveTo(-26,13.5); ctx.lineTo(8,13.5);
+      ctx.stroke();
+      // cream medallions down the field
+      for (const dx of [-21,-13,-5,3]){
+        poly([[dx,10],[dx+3,7],[dx+6,10],[dx+3,13]], C);
+        poly([[dx+3,8.6],[dx+4.4,10],[dx+3,11.4],[dx+1.6,10]], R);
+      }
+      // fringe on the loose end
+      ctx.strokeStyle=C; ctx.lineWidth=1.2;
+      ctx.beginPath();
+      ctx.moveTo(-27,5.5); ctx.lineTo(-31,6.4);
+      ctx.moveTo(-27,8.5); ctx.lineTo(-31.5,9);
+      ctx.moveTo(-27,11.5); ctx.lineTo(-31.5,11.8);
+      ctx.moveTo(-27,14.5); ctx.lineTo(-31,15.6);
+      ctx.stroke();
+      // the roll
+      ctx.save(); ctx.translate(15,4);
+      ctx.fillStyle=R; ctx.beginPath(); ctx.arc(0,0,12,0,TAU); ctx.fill();
+      ctx.fillStyle=shade(R,-0.22); ctx.beginPath(); ctx.arc(0,0,12,Math.PI*0.4,Math.PI*1.4); ctx.fill();
+      ctx.strokeStyle=G; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(0,0,8,0,TAU); ctx.stroke();
+      ctx.strokeStyle=C; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(0,0,4.2,0,TAU); ctx.stroke();
+      ctx.fillStyle=shade(R,-0.4); ctx.beginPath(); ctx.arc(0,0,1.9,0,TAU); ctx.fill();
+      ctx.strokeStyle='rgba(58,54,48,0.4)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(0,0,12,0,TAU); ctx.stroke();
+      ctx.restore();
       break;
     }
     case 'rcandle': candle('#D6453D', 22, 52, true); break;
     case 'cloud': {
+      // FUD: a proper storm cloud of stacked paper puffs, with a live bolt
       const b = Math.sin(now*1.6 + it.x*0.7)*5;
       ctx.translate(0,b);
-      poly([[-30,8],[-24,-6],[-12,-14],[4,-16],[18,-10],[27,-1],[24,10],[-24,10]], '#9AA0AC');
-      poly([[-12,-14],[4,-16],[8,10],[-14,10]], shade('#9AA0AC',-0.12));
-      ctx.fillStyle = '#5A6070';
-      ctx.font = '900 11px -apple-system, sans-serif';
+      const D='#6E7585', M='#8B93A3', L='#A7AEBC';
+      // billow silhouette (back to front so the folds read)
+      const puff = (cx,cy,r,col)=>{ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(cx,cy,r,0,TAU); ctx.fill(); };
+      puff(-16,-2,12,D); puff(16,-2,12,D); puff(0,-9,15,D); puff(-7,2,12,D); puff(8,2,12,D);
+      ctx.fillStyle=D; ctx.beginPath(); ctx.rect(-26,-2,52,10); ctx.fill();
+      // flat base so it reads as a cloud, not a blob
+      ctx.fillStyle=shade(D,-0.12); ctx.beginPath(); ctx.rect(-26,4,52,4); ctx.fill();
+      // lit tops
+      puff(-15,-5,8,M); puff(1,-13,10,L); puff(15,-5,8,M);
+      // label plate keeps the word legible against the folds
+      ctx.fillStyle='#F3F4F7';
+      ctx.beginPath(); ctx.rect(-15,-6,30,12); ctx.fill();
+      ctx.strokeStyle='rgba(46,42,36,0.25)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.rect(-15,-6,30,12); ctx.stroke();
+      ctx.fillStyle='#3A4150';
+      ctx.font='900 11px -apple-system, sans-serif';
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('FUD', -1, -1);
+      ctx.fillText('FUD', 0, 0.5);
+      // lightning: strikes on a per-cloud cycle
+      const ph = (now*0.9 + it.x*0.013) % 1;
+      if (ph < 0.16){
+        const a = ph < 0.08 ? 1 : (0.16-ph)/0.08;
+        ctx.globalAlpha = a;
+        poly([[-4,7],[3,7],[-1,15],[5,15],[-5,27],[-1,17],[-6,17]], '#FFD23F', '#C9971F');
+        ctx.globalAlpha = a*0.35;
+        ctx.fillStyle='#FFD23F';
+        ctx.beginPath(); ctx.arc(0,12,13,0,TAU); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      break;
+    }
+    case 'sandwich': {
+      // Richard's sandwich. A folded-paper club, stacked and unmistakable.
+      const bob = Math.sin(now*2.4 + it.x*0.5)*3;
+      ctx.translate(0,bob); ctx.rotate(-0.12);
+      // bottom slice
+      poly([[-16,4],[16,4],[14,10],[-14,10]], '#E8C88A', 'rgba(58,54,48,0.35)');
+      // filling: lettuce frill, tomato, cheese
+      ctx.fillStyle='#5FA855';
+      ctx.beginPath();
+      ctx.moveTo(-16,4);
+      for (let i=0;i<=8;i++){ const xx=-16+i*4; ctx.lineTo(xx, i%2 ? 6.5 : 3); }
+      ctx.lineTo(16,1); ctx.lineTo(-16,1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#D6453D';
+      ctx.beginPath(); ctx.arc(-7,0.5,3.6,0,TAU); ctx.arc(6,0.5,3.6,0,TAU); ctx.fill();
+      poly([[-15,-3],[15,-3],[13,1],[-13,1]], '#F2C14E');
+      // top slice with crust + a bite taken out
+      poly([[-15,-10],[15,-10],[16,-3],[-16,-3]], '#F0D9A0', 'rgba(58,54,48,0.35)');
+      poly([[-15,-10],[15,-10],[15,-7.5],[-15,-7.5]], '#D9A441');
+      ctx.fillStyle='#F5F1E6';
+      ctx.beginPath(); ctx.arc(11,-9,4.4,0,TAU); ctx.fill();
+      break;
+    }
+    case 'tablet': {
+      // The PulseChain marketing tablet. Grab it and the next hit bounces off:
+      // marketing beats FUD. Modelled on the real LCD writing tablet.
+      const bob = Math.sin(now*2.2 + it.x*0.4)*3;
+      ctx.translate(0,bob); ctx.rotate(Math.sin(now*1.1 + it.x)*0.05);
+      // white plastic shell
+      poly([[-15,-20],[15,-20],[15,20],[-15,20]], '#F7F4EC', 'rgba(58,54,48,0.4)');
+      // stylus clipped across the top
+      ctx.fillStyle='#EDE9DE'; ctx.fillRect(-12,-19,24,3);
+      ctx.strokeStyle='rgba(58,54,48,0.25)'; ctx.lineWidth=0.6;
+      ctx.strokeRect(-12,-19,24,3);
+      // dark screen bezel with the marketing slogans running round it
+      poly([[-12.5,-15],[12.5,-15],[12.5,16],[-12.5,16]], '#241F1B');
+      ctx.save();
+      ctx.beginPath(); ctx.rect(-12.5,-15,25,31); ctx.clip();   // keep the slogans inside the bezel
+      ctx.fillStyle='#F7F4EC';
+      ctx.font='900 2.9px -apple-system, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('FREE COINS \u00B7 PULSECHAIN.COM', 0, -12.8);
+      ctx.fillText('RELIABLE \u00B7 HEX.COM', 0, 14.2);
+      ctx.restore();
+      // the drawn-on hexagon smiley, in PulseChain gradient ink
+      const g = ctx.createLinearGradient(-9,-10,9,10);
+      g.addColorStop(0,'#FF2E9A'); g.addColorStop(0.5,'#9B5CFF'); g.addColorStop(1,'#3FD0C9');
+      ctx.strokeStyle=g; ctx.lineWidth=1.6; ctx.lineJoin='round';
+      ctx.beginPath();
+      for (let i=0;i<6;i++){
+        const a = Math.PI/6 + i*TAU/6, r = 8.6;
+        const px2 = Math.cos(a)*r, py2 = Math.sin(a)*r*0.92 + 0.5;
+        i ? ctx.lineTo(px2,py2) : ctx.moveTo(px2,py2);
+      }
+      ctx.closePath(); ctx.stroke();
+      ctx.fillStyle='#3FD0C9';
+      ctx.beginPath(); ctx.ellipse(-3,-2.4,1.1,1.9,0,0,TAU); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(3,-2.4,1.1,1.9,0,0,TAU); ctx.fill();
+      ctx.strokeStyle='#3FD0C9'; ctx.lineWidth=1.3;
+      ctx.beginPath(); ctx.arc(0,1.2,4.6,0.25*Math.PI,0.75*Math.PI); ctx.stroke();
+      // PLS + HEX buttons along the bottom
+      ctx.fillStyle='#FF2E9A'; ctx.beginPath(); ctx.arc(-6,18,1.8,0,TAU); ctx.fill();
+      ctx.fillStyle='#F5A623'; ctx.beginPath(); ctx.arc(6,18,1.8,0,TAU); ctx.fill();
       break;
     }
     case 'bomb': {
@@ -640,6 +805,124 @@ function drawCharacter(key, t, grounded, vy, angle, forCard){
   ctx.restore();
 }
 
+
+/* =====================================================================
+   PULSE THRUST — every press fires a PulseChain-gradient burst out the back
+   ===================================================================== */
+const PLS_HUES = ['#FF2E9A', '#C246E0', '#9B5CFF', '#7FB0FF'];
+let thrustT = 0;              // burst timer, drives the flame
+const rings = [];             // expanding pulse rings
+const puffs = [];             // gradient exhaust motes
+
+function emitThrust(){
+  thrustT = 0.34;
+  rings.push({ t:0, x:W*PLAYER_SX - 14, y:0 });   // y resolved at draw time (player moves)
+  for (let i=0;i<8;i++){
+    puffs.push({
+      x: W*PLAYER_SX - 16 + (Math.random()-0.5)*5,
+      y: player.y - 13 + (Math.random()-0.5)*7,
+      vx: -(90 + Math.random()*170),
+      vy: (Math.random()-0.5)*80,
+      t: 0, life: 0.3 + Math.random()*0.3,
+      col: PLS_HUES[Math.floor(Math.random()*PLS_HUES.length)],
+      s: 2.5 + Math.random()*4,
+      rot: Math.random()*TAU, vr: (Math.random()-0.5)*10,
+    });
+  }
+  sfx('peww');
+}
+
+function updateThrust(dt, spd){
+  thrustT = Math.max(0, thrustT - dt);
+  for (let i=rings.length-1;i>=0;i--){
+    const r = rings[i];
+    r.t += dt; r.x -= (spd||0)*dt*0.55;
+    if (r.t > 0.42) rings.splice(i,1);
+  }
+  for (let i=puffs.length-1;i>=0;i--){
+    const p = puffs[i];
+    p.t += dt;
+    p.x += (p.vx - (spd||0)*0.45)*dt;
+    p.y += p.vy*dt;
+    p.rot += p.vr*dt;
+    if (p.t >= p.life) puffs.splice(i,1);
+  }
+}
+
+function drawThrust(){
+  // exhaust motes (paper confetti in PulseChain colours)
+  for (const p of puffs){
+    const k = 1 - p.t/p.life;
+    ctx.save();
+    ctx.globalAlpha = k*0.85;
+    ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+    ctx.fillStyle = p.col;
+    const s = p.s*(0.5+k*0.5);
+    ctx.fillRect(-s/2,-s/2,s,s*0.75);
+    ctx.restore();
+  }
+  // pulse rings
+  for (const r of rings){
+    const k = r.t/0.42;
+    ctx.save();
+    ctx.globalAlpha = (1-k)*0.5;
+    ctx.strokeStyle = '#9B5CFF';
+    ctx.lineWidth = 2.5*(1-k) + 0.5;
+    ctx.beginPath(); ctx.arc(r.x, player.y - 13, 6 + k*30, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+  // gradient flame out the back
+  if (thrustT > 0){
+    const k = thrustT/0.34;
+    const sx = W*PLAYER_SX - 15, sy = player.y - 13;
+    const len = 20 + 30*k;
+    const g = ctx.createLinearGradient(sx, sy, sx-len, sy);
+    g.addColorStop(0, '#FF2E9A');
+    g.addColorStop(0.45, '#9B5CFF');
+    g.addColorStop(1, 'rgba(127,176,255,0)');
+    ctx.save();
+    ctx.globalAlpha = 0.55 + k*0.45;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy - (3 + 5*k));
+    ctx.lineTo(sx - len, sy);
+    ctx.lineTo(sx, sy + (3 + 5*k));
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+}
+
+
+/* =====================================================================
+   SHIELD — the marketing tablet cancels exactly one hit (the SEC's own medicine)
+   ===================================================================== */
+let shield = 0;          // hits absorbed in reserve
+let shieldFlash = 0;     // burst timer when one is spent
+
+function drawShield(){
+  if (shield <= 0 && shieldFlash <= 0) return;
+  const sx = W*PLAYER_SX, sy = player.y - 14;
+  ctx.save();
+  if (shield > 0){
+    const pulse = 1 + Math.sin(now*4)*0.05;
+    const g = ctx.createLinearGradient(sx-30, sy-30, sx+30, sy+30);
+    g.addColorStop(0,'#FF2E9A'); g.addColorStop(0.5,'#9B5CFF'); g.addColorStop(1,'#7FB0FF');
+    ctx.globalAlpha = 0.75;
+    ctx.strokeStyle = g; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(sx, sy, 30*pulse, 0, TAU); ctx.stroke();
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx, sy, 30*pulse, 0, TAU); ctx.fill();
+  }
+  if (shieldFlash > 0){
+    const k = shieldFlash/0.5;
+    ctx.globalAlpha = k*0.85;
+    ctx.strokeStyle = '#9B5CFF'; ctx.lineWidth = 4*k + 1;
+    ctx.beginPath(); ctx.arc(sx, sy, 30 + (1-k)*46, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 /* =====================================================================
    AUDIO — WebAudio-synthesized paper foley, no files
    ===================================================================== */
@@ -693,6 +976,19 @@ function sfx(name){
     }
     case 'thunder': noise(1.1,'lowpass',300,60,0.35); break;
     case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
+    case 'shieldUp': { ping(660,0.16,0.18); ping(990,0.22,0.2,0.08); ping(1320,0.3,0.18,0.16); break; }
+    case 'block':    { noise(0.18,'bandpass',1800,500,0.5); ping(440,0.24,0.2); break; }
+    case 'peww': {   // deliberately quiet: it fires on every press
+      const o = ac.createOscillator(); o.type='sine';
+      o.frequency.setValueAtTime(880, t0);
+      o.frequency.exponentialRampToValueAtTime(240, t0+0.13);
+      const og = ac.createGain(); o.connect(og); og.connect(ac.destination);
+      og.gain.setValueAtTime(0.0001, t0);
+      og.gain.exponentialRampToValueAtTime(0.045, t0+0.012);
+      og.gain.exponentialRampToValueAtTime(0.0001, t0+0.15);
+      o.start(t0); o.stop(t0+0.17);
+      break;
+    }
     case 'tick':    ping(660,0.14,0.2); break;
     case 'go':      ping(880,0.12,0.22); ping(1320,0.25,0.25,0.1); break;
   }
@@ -706,6 +1002,16 @@ function setMute(m){
    ANALYTICS — self-hosted, queued in localStorage, flushed in batches
    ===================================================================== */
 const clientId = (()=>{ let id = localStorage.getItem('pnj_cid'); if(!id){ id = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)+Date.now()); localStorage.setItem('pnj_cid', id); } return id; })();
+// Proves we own clientId when writing. Never sent on reads, never rendered.
+const clientSecret = (()=>{
+  let sec = localStorage.getItem('pnj_secret');
+  if (!sec){
+    const b = new Uint8Array(24); crypto.getRandomValues(b);
+    sec = [...b].map(v=>v.toString(16).padStart(2,'0')).join('');
+    localStorage.setItem('pnj_secret', sec);
+  }
+  return sec;
+})();
 const platform = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
 function track(event, props){
   try {
@@ -734,6 +1040,7 @@ document.addEventListener('visibilitychange', ()=>{ if (document.visibilityState
 /* =====================================================================
    SCORES / LEADERBOARD
    ===================================================================== */
+let lastRank = null;
 let best = parseInt(localStorage.getItem('pj_best')||'0',10) || 0;
 function playerName(){ return (localStorage.getItem('pnj_name')||'').trim(); }
 
@@ -743,12 +1050,16 @@ async function submitScore(run){
     await fetch(API+'/scores', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        game: GAME, client_id: clientId, name: name || 'anon',
+        game: GAME, client_id: clientId, client_secret: clientSecret, name: name || 'anon',
         score: run.score, distance: run.distance, duration_ms: run.durationMs,
         variant: variantKey, day: terrain.dateDay,
       }),
     });
-  } catch(e){}
+    // where did that land us? drives the champion card
+    const r = await fetch(`${API}/scores?game=${GAME}&period=daily&client_id=${encodeURIComponent(clientId)}`);
+    const j = await r.json();
+    return j && j.me ? j.me : null;
+  } catch(e){ return null; }
 }
 let boardPeriod = 'daily';
 async function loadBoard(){
@@ -761,7 +1072,7 @@ async function loadBoard(){
     list.innerHTML = '';
     j.scores.forEach((s,i)=>{
       const li = document.createElement('li');
-      if (s.client_id === clientId) li.className='me';
+      if (s.me) li.className='me';
       li.innerHTML = `<span class="rank">${i+1}</span><span class="bname"></span><span class="bscore">${Number(s.score).toLocaleString()}</span>`;
       li.querySelector('.bname').textContent = s.name || 'anon';
       list.appendChild(li);
@@ -780,11 +1091,10 @@ async function loadBoard(){
 /* =====================================================================
    SHARE CARD — 1200x630 canvas render
    ===================================================================== */
-async function shareScore(run){
-  track('share_tapped', { score: run.score, platform_shared_to: platform==='mobile'?'sheet':'twitter' });
-  const c = document.createElement('canvas'); c.width=1200; c.height=630;
-  const x = c.getContext('2d');
-  // paper background
+
+/* Shared card painter: the score card and the champion card are the same
+   artwork, with a crown ribbon added when the run tops a board. */
+function paintCard(x, run, champ){
   const grad = x.createLinearGradient(0,0,0,630);
   grad.addColorStop(0,'#FDF6E3'); grad.addColorStop(1,'#F2E9D3');
   x.fillStyle=grad; x.fillRect(0,0,1200,630);
@@ -806,31 +1116,50 @@ async function shareScore(run){
   x.lineTo(1200,630); x.closePath(); x.fill();
   // fold corner
   x.fillStyle='#EAE3D2'; x.beginPath(); x.moveTo(1200,0); x.lineTo(1200-70,0); x.lineTo(1200,70); x.closePath(); x.fill();
-  // text
+
+  if (champ){
+    // gold champion ribbon across the top
+    x.fillStyle='#F2C14E'; x.fillRect(0,0,1200,74);
+    x.fillStyle='#D9A441'; x.fillRect(0,74,1200,7);
+    x.fillStyle='#4A3608'; x.textAlign='left';
+    x.font='900 34px -apple-system, Helvetica, sans-serif';
+    x.fillText('\u265B  #1 ' + champ.period.toUpperCase() + '  \u00B7  ' + (playerName() || 'ANON').toUpperCase(), 70, 51);
+    x.textAlign='right';
+    x.font='900 26px -apple-system, Helvetica, sans-serif';
+    x.fillText('CHING CHING ARCADE', 1130, 49);
+    x.textAlign='left';
+  }
+  const top = champ ? 74 : 0;
   x.fillStyle='#2E2A24'; x.textAlign='left';
   x.font='900 44px -apple-system, Helvetica, sans-serif';
-  x.fillText('PUMP & JUMP', 70, 110);
+  x.fillText('PUMP & JUMP', 70, 110+top);
   x.fillStyle='#E4572E'; x.font='800 22px -apple-system, Helvetica, sans-serif';
-  x.fillText('I RODE THE REAL PLS CHART', 70, 152);
+  x.fillText(champ ? 'I RODE THE REAL PLS CHART' : 'I RODE THE REAL PLS CHART', 70, 152+top);
   x.fillStyle='#2E2A24'; x.font='900 170px -apple-system, Helvetica, sans-serif';
-  x.fillText(run.score.toLocaleString(), 62, 350);
+  x.fillText(run.score.toLocaleString(), 62, 350+top*0.4);
   x.fillStyle='rgba(58,54,48,0.6)'; x.font='700 26px -apple-system, Helvetica, sans-serif';
-  x.fillText(`${run.distance.toLocaleString()}m through PLS history`, 70, 400);
+  x.fillText(`${run.days.toLocaleString()} days of PLS history`, 70, 400+top*0.4);
   // character
   x.save(); x.translate(950,430); x.scale(4.4,4.4);
   drawOnto(x, ()=> drawCharacter(variantKey, 0.35, true, 0, 0, true));
   x.restore();
   // CTA
-  x.fillStyle='#E4572E'; x.fillRect(70,470,520,86);
-  x.fillStyle='#B23F1E'; x.fillRect(70,556,520,8);
+  x.fillStyle='#E4572E'; x.fillRect(70,470,560,86);
+  x.fillStyle='#B23F1E'; x.fillRect(70,556,560,8);
   x.fillStyle='#fff'; x.font='900 30px -apple-system, Helvetica, sans-serif';
   x.fillText('PLAY ON CHING CHING', 100, 512);
   x.font='700 21px -apple-system, Helvetica, sans-serif';
   x.fillText('chingching.xyz/pump-and-jump', 100, 543);
+}
 
+async function shareScore(run){
+  track('share_tapped', { score: run.score, platform_shared_to: platform==='mobile'?'sheet':'twitter' });
+  const c = document.createElement('canvas'); c.width=1200; c.height=630;
+  const x = c.getContext('2d');
+  paintCard(x, run, lastRank && lastRank.rank === 1 ? { rank:1, period:'daily' } : null);
   const blob = await new Promise(res=>c.toBlob(res,'image/png'));
   const file = new File([blob], 'pump-and-jump-score.png', { type:'image/png' });
-  const text = `I scored ${run.score.toLocaleString()} riding the real PLS chart in Pump & Jump 🏍📈\n\nPlay: https://chingching.xyz/pump-and-jump/`;
+  const text = `I scored ${run.score.toLocaleString()} riding the real PLS chart in PUMP & JUMP 🏍📈\n\nPlay: https://chingching.xyz/pump-and-jump/`;
   if (navigator.canShare && navigator.canShare({ files:[file] })){
     try { await navigator.share({ files:[file], text }); return; } catch(e){ if (e.name==='AbortError') return; }
   }
@@ -851,7 +1180,7 @@ function drawOnto(target, fn){
 const input = { held:false, pressed:false };
 function press(){
   audio();
-  if (state==='playing'){ input.held=true; input.pressed=true; }
+  if (state==='playing'){ input.held=true; input.pressed=true; emitThrust(); }
   else if (state==='menu' && !panelOpen()) startRun();
   else if (state==='dead' && overShown && !panelOpen()) restart();
 }
@@ -886,6 +1215,8 @@ function scrollSpeed(){
 
 function startRun(){
   camX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
+  rings.length = 0; puffs.length = 0; thrustT = 0;
+  shield = 0; shieldFlash = 0;
   wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1;
   spawnCourse(); resetPlayer();   // new obstacle/collectible layout every run
   state = 'countdown'; countdownT = 3; goT = 0; overShown=false;
@@ -908,16 +1239,22 @@ function die(cause){
   for (let i=0;i<26;i++){
     deathBits.push({ x:px, y:py, vx:(Math.random()-0.3)*420, vy:(Math.random()-0.75)*520, rot:Math.random()*TAU, vr:(Math.random()-0.5)*14, s:3+Math.random()*6, col: Math.random()<0.5?'#FAF7F0':'#E4572E' });
   }
-  const distance = Math.round(camX/10);
-  lastRun = { score: Math.round(score), distance, durationMs: Math.round(performance.now()-runStartTs), cause };
+  const distance = Math.round(camX/10);              // server unit (anti-cheat caps)
+  const days = Math.max(1, Math.round(camX/SEG));    // what the player sees: days of chart
+  lastRun = { score: Math.round(score), distance, days, durationMs: Math.round(performance.now()-runStartTs), cause };
   const isBest = lastRun.score > best;
   if (isBest){ best = lastRun.score; localStorage.setItem('pj_best', String(best)); }
-  track('game_over', { score:lastRun.score, distance, run_duration_ms:lastRun.durationMs, obstacles_hit:cause });
-  submitScore(lastRun);
+  track('game_over', { score:lastRun.score, distance, days, run_duration_ms:lastRun.durationMs, obstacles_hit:cause });
+  lastRank = null;
+  el('champWrap').classList.add('hidden');
+  submitScore(lastRun).then(me => {
+    lastRank = me;
+    if (me && me.rank === 1 && me.score === lastRun.score) showChampion(lastRun, me, 'daily');
+  });
   setTimeout(()=>{
     el('finalScore').textContent = lastRun.score.toLocaleString();
     el('deathCause').textContent = 'Taken out by ' + cause + '.';
-    el('statDist').textContent = distance.toLocaleString()+'m';
+    el('statDist').textContent = days.toLocaleString();
     el('statCoins').textContent = coins;
     el('statBest').textContent = best.toLocaleString();
     el('newBest').style.visibility = isBest ? 'visible' : 'hidden';
@@ -956,13 +1293,15 @@ async function saveNameAndSync(){
   try {
     const r = await fetch(API+'/name', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ client_id: clientId, name: n }),
+      body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, name: n }),
     });
     el('nameStatus').textContent = r.ok ? '✓ leaderboard scores saved as "'+n+'"' : 'could not reach leaderboard';
     if (r.ok){
       el('nameEditor').classList.add('hidden');
       el('namedRow').classList.remove('hidden');
       el('playingAs').textContent = n;
+      // the champion card prints the name in its ribbon: redraw it under the new one
+      if (lastRun && lastRank && lastRank.rank === 1) showChampion(lastRun, lastRank, 'daily');
     }
   } catch(e){
     el('nameStatus').textContent = 'saved on this device (leaderboard offline)';
@@ -1002,6 +1341,8 @@ function frame(ts){
     if (state==='playing') checkCollisions();
     updateWeather(dt);
     updateParticles(dt, spd);
+    updateThrust(dt, spd);
+    shieldFlash = Math.max(0, shieldFlash - dt);
   } else if (state==='dead'){
     for (const b of deathBits){ b.vy += 1400*dt; b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt; }
     updateWeather(dt); updateParticles(dt, 0);
@@ -1023,9 +1364,22 @@ function checkCollisions(){
     const dx = it.x-px, dy = iy-pyC;
     const rr = it.r + PLAYER_R;
     if (dx*dx+dy*dy < rr*rr){
-      if (it.ob) return die(OB_LABEL[it.type]);
+      if (it.ob){
+        if (shield > 0){          // marketing beats FUD: burn a shield, survive
+          shield -= 1; shieldFlash = 0.5; it.hit = true;
+          floaters.push({ x:W*PLAYER_SX+dx, y:iy-30, t:0, txt:'BLOCKED!' });
+          sfx('block');
+          continue;
+        }
+        return die(OB_LABEL[it.type]);
+      }
       it.hit = true; score += it.val; coins++;
-      sfx(it.type==='diamond'?'moon':'collect');
+      if (it.shield){
+        shield += 1;
+        floaters.push({ x:W*PLAYER_SX+dx, y:iy-34, t:0, txt:'SHIELD UP' });
+        sfx('shieldUp');
+      }
+      sfx((it.type==='diamond'||it.type==='sandwich')?'moon':'collect');
       track('collectible_picked_up', { type: it.type, score_value: it.val });
       floaters.push({ x:W*PLAYER_SX+dx, y:iy-14, t:0, txt:'+'+it.val });
     }
@@ -1060,6 +1414,8 @@ function render(){
   drawMountains();
   drawTerrain();
   drawItems();
+  if (state==='playing') drawThrust();
+  if (state==='playing') drawShield();
   if (state==='playing' || state==='menu' || state==='countdown') drawPlayer();
   if (state==='dead') drawDeathBits();
   drawParticles();
@@ -1206,6 +1562,12 @@ function drawHUD(){
   // best (top-left)
   ctx.textAlign='left';
   ctx.fillText('BEST '+best.toLocaleString(), 14, safeTop+4);
+  // shields in reserve
+  if (shield > 0){
+    ctx.fillStyle='#9B5CFF';
+    ctx.font='900 12px -apple-system, sans-serif';
+    ctx.fillText('\u25C9 SHIELD' + (shield > 1 ? ' x'+shield : ''), 14, safeTop+20);
+  }
   // the real chart, big and bold along the bottom: full date + price
   const di = dayIndexAt(camX + W*PLAYER_SX);
   if (di>=0){
@@ -1240,6 +1602,7 @@ function updateStartHint(){
 el('playBtn').addEventListener('click', startRun);
 el('restartBtn').addEventListener('click', restart);
 el('shareBtn').addEventListener('click', ()=>{ saveName(); if(lastRun) shareScore(lastRun); });
+el('champDl').addEventListener('click', downloadChampion);
 el('muteBtn').addEventListener('click', ()=>{ setMute(!muted); sfx('click'); });
 el('pname').addEventListener('change', saveName);
 el('saveNameBtn').addEventListener('click', saveNameAndSync);
@@ -1267,6 +1630,111 @@ document.querySelectorAll('#board .tab').forEach(t=>{
     loadBoard();
   });
 });
+
+
+/* =====================================================================
+   ARCADE CROSS-LINKS — thumbnails of the other games, one click away
+   ===================================================================== */
+const ARCADE = [
+  { slug:'moonshot',      name:'MOON<span class="accent">SHOT</span>', href:'/moonshot/',      hero:heroRocket },
+  { slug:'pump-and-jump', name:'PUMP <span class="accent">&amp;</span> JUMP', href:'/pump-and-jump/', hero:heroMoto },
+];
+function heroScene(sky){
+  const g = ctx.createLinearGradient(0,0,0,64);
+  g.addColorStop(0,sky[0]); g.addColorStop(1,sky[1]);
+  ctx.fillStyle=g; ctx.fillRect(0,0,140,64);
+  ctx.beginPath(); ctx.moveTo(0,64);
+  const hs=[0.78,0.72,0.8,0.68,0.74,0.6,0.68,0.56,0.62,0.5];
+  hs.forEach((v,i)=>ctx.lineTo(i*(140/(hs.length-1)), 64*v));
+  ctx.lineTo(140,64); ctx.closePath();
+  ctx.fillStyle='#FBF7EE'; ctx.fill();
+  ctx.strokeStyle='rgba(63,163,94,0.55)'; ctx.lineWidth=2;
+  ctx.beginPath(); hs.forEach((v,i)=>{const x=i*(140/(hs.length-1)),y=64*v; i?ctx.lineTo(x,y):ctx.moveTo(x,y);}); ctx.stroke();
+}
+function heroRocket(){
+  heroScene(['#FDF6E3','#F8ECCD']);
+  ctx.fillStyle='#F5CE62'; ctx.beginPath(); ctx.arc(120,14,8,0,TAU); ctx.fill();
+  ctx.save(); ctx.translate(58,30); ctx.rotate(-0.35); ctx.scale(1.05,1.05);
+  poly([[-16,-10],[-30,-13],[-16,-16]],'#FFB627');
+  poly([[-16,-11],[-24,-13],[-16,-15]],'#E4572E');
+  poly([[-16,-6],[8,-6],[18,-13],[8,-20],[-16,-20]],'#F0EDE4','rgba(58,54,48,0.35)');
+  poly([[-16,-6],[8,-6],[8,-13],[-16,-13]],shade('#F0EDE4',-0.1));
+  poly([[8,-6],[18,-13],[8,-20]],'#E4572E');
+  poly([[-16,-6],[-8,-6],[-14,2],[-20,2]],'#E4572E');
+  poly([[-16,-20],[-8,-20],[-14,-28],[-20,-28]],shade('#E4572E',-0.15));
+  ctx.fillStyle='#7FB4D9'; ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.fill();
+  ctx.restore();
+}
+function heroMoto(){
+  heroScene(['#EAF2FA','#DCE9F5']);
+  ctx.save(); ctx.translate(58,38); ctx.rotate(-0.38); ctx.scale(0.95,0.95);
+  for (const wxo of [-16,16]){
+    ctx.save(); ctx.translate(wxo,-8); hexPoly(9.5,'#3A3630'); ctx.restore();
+    ctx.fillStyle='#FBF8F1'; ctx.fillRect(wxo-1.6,-9.6,3.2,3.2);
+  }
+  poly([[-16,-10],[-4,-20],[14,-20],[16,-10],[6,-8],[-8,-8]],'#E4572E','rgba(58,54,48,0.35)');
+  poly([[-4,-20],[14,-20],[6,-8]],shade('#E4572E',-0.15));
+  poly([[13,-20],[20,-24],[21,-20]],shade('#E4572E',-0.3));
+  poly([[-8,-20],[2,-20],[6,-29],[-4,-31]],'#4A7BD0','rgba(58,54,48,0.35)');
+  poly([[-6,-31],[6,-31],[4,-38],[-4,-38]],'#F6F1E5','rgba(58,54,48,0.35)');
+  poly([[4,-38],[6,-31],[9,-33]],'#E4572E');
+  ctx.restore();
+  ctx.strokeStyle='rgba(228,87,46,0.5)'; ctx.lineWidth=2; ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.arc(74,52,31,-2.75,-0.35); ctx.stroke();
+  ctx.setLineDash([]);
+}
+function buildOthers(){
+  const others = ARCADE.filter(g => g.slug !== GAME);
+  for (const id of ['otherStart','otherOver']){
+    const wrap = el(id);
+    if (!wrap) continue;
+    wrap.innerHTML = '';
+    const lbl = document.createElement('div');
+    lbl.className = 'othersLabel'; lbl.textContent = 'ALSO IN THE ARCADE';
+    wrap.appendChild(lbl);
+    const row = document.createElement('div'); row.className = 'othersRow';
+    for (const g of others){
+      const a = document.createElement('a'); a.className = 'thumb'; a.href = g.href;
+      const cv = document.createElement('canvas'); cv.width = 280; cv.height = 128;
+      a.appendChild(cv);
+      const nm = document.createElement('div'); nm.className = 'thumbName';
+      nm.innerHTML = g.name;                       // literal from ARCADE, no user input
+      a.appendChild(nm);
+      const cx = cv.getContext('2d'); cx.setTransform(2,0,0,2,0,0);
+      drawOnto(cx, g.hero);
+      row.appendChild(a);
+    }
+    const all = document.createElement('a');
+    all.className = 'thumb'; all.href = '/arcade/';
+    all.style.cssText = 'width:auto; display:flex; align-items:center; padding:0 16px; font-weight:800; font-size:12px; color:#E4572E;';
+    all.textContent = 'ALL GAMES →';
+    row.appendChild(all);
+    wrap.appendChild(row);
+  }
+}
+
+/* =====================================================================
+   CHAMPION CARD — rendered inline when a run tops a leaderboard
+   ===================================================================== */
+let champBlob = null;
+async function showChampion(run, me, period){
+  const c = document.createElement('canvas'); c.width = 1200; c.height = 630;
+  const x = c.getContext('2d');
+  paintCard(x, run, { rank: me.rank, period });
+  el('champTitle').textContent = '\u265B  #1 ' + period.toUpperCase() + ' \u2014 YOU RULE THE BOARD';
+  el('champImg').src = c.toDataURL('image/png');
+  el('champWrap').classList.remove('hidden');
+  c.toBlob(b => { champBlob = b; });
+}
+function downloadChampion(){
+  if (!champBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(champBlob);
+  a.download = 'pump-and-jump-score.png';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+  track('share_tapped', { score: lastRun ? lastRun.score : 0, platform_shared_to: 'download_champion' });
+}
 
 /* =====================================================================
    BOOT — terrain: worker (daily) -> localStorage cache -> baked fallback
@@ -1298,6 +1766,7 @@ async function boot(){
   resetPlayer();
   state = 'menu';
   buildRocketPreview();
+  buildOthers();
   updateStartHint();
   setMute(muted);
   requestAnimationFrame(frame);
