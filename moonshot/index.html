@@ -184,6 +184,7 @@ h1 .accent { color:#E4572E; }
       <button id="changeNameBtn" style="font:inherit; font-size:11px; border:none; background:none; color:#E4572E; font-weight:800; cursor:pointer; text-decoration:underline;">change</button>
     </div>
     <div id="nameStatus" style="font-size:11px; color:#3FA35E; font-weight:700; margin-top:5px; min-height:14px;"></div>
+    <div id="saveWarn" class="hidden" style="font-size:11px; color:#C0392B; font-weight:700; margin-top:4px;"></div>
   </div>
   <div class="btn-row">
     <button id="restartBtn" class="btn">RUN IT BACK</button>
@@ -233,7 +234,15 @@ const SEG = 90;              // world px per daily price point
 const DENSE = 4;             // heightmap sample step
 const BRIDGE = 10;           // interpolated points joining last day back to first
 const GRAVITY = 2300;
+// Speed is driven by PROGRESS THROUGH THE CHART, not just by how long you have
+// been alive. Past SURGE_FROM the run accelerates towards END_SPEED, so the last
+// days of the chart are always the hardest part of the run and always the same
+// hardest part for everyone — a player who dawdles cannot arrive at the finale
+// going slower than a player who did not.
 const BASE_SPEED = 265, RAMP = 6.5, MAX_SPEED = 620;
+const END_SPEED = 1500;        // flat out, at the Peg Flag
+const SURGE_FROM = 0.45;       // fraction of the chart ridden before the surge starts
+const WIN_BONUS = 5000;      // finishing the whole chart should top the board
 const PLAYER_SX = 0.30;      // player screen x as fraction of width
 const PLAYER_R = 15;         // collision radius
 const qs = new URLSearchParams(location.search);
@@ -285,6 +294,9 @@ function buildTerrain(data){
     norm, n, nWrap: norm.length,
     prices, startDay: data.startDay, dateDay: Math.floor(data.date/86400),
     worldLen: (norm.length)*SEG, hs: null, top:0, bottom:0,
+    // The last real day of the chart. The bridge points past it are synthetic,
+    // so they are run-out for the flagpole to stand on rather than playable chart.
+    finishX: n*SEG,
   };
   buildGeometry();
   computeWeatherMap();
@@ -370,6 +382,10 @@ function wEase(){ const t = wx.t; return t*t*(3-2*t); }
 function weatherAt(x){ const i=Math.floor(wrapX(x)/SEG); return weatherMap[Math.min(i,weatherMap.length-1)]; }
 function updateWeather(dt){
   wx.dwell += dt;
+  // Won runs hold the clear sky set by win(); the camera has stopped, so the
+  // chart underneath would otherwise drag its own storm straight back over the
+  // fireworks — which is exactly where they became invisible.
+  if (state === 'won'){ wx.t = Math.min(1, wx.t + dt/1.6); return; }
   const target = weatherAt(camX + W*0.6);
   // only start a new spell once the last fade has finished AND it has had its turn
   if (target !== wx.cur && wx.t >= 1 && wx.dwell >= WEATHER_MIN_DWELL){
@@ -452,6 +468,30 @@ let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
 const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD', bomb:'a Bomb',
                    wall:'a Sell Wall', sec:'the SEC', notice:'an Interpol Red Notice' };
 
+
+// ---------------------------------------------------------------- the run to the Peg Flag
+// The rocket climbs at 3600 and falls at 1600, so a full ceiling-to-floor transit
+// costs real time — time the finale speed does not give you. The run-in alternates
+// a deep sell wall (dive under it) with a ground hazard (climb over it), spaced so
+// each transit has to start almost the instant the last one finished. There is no
+// hovering line that clears both.
+const FINALE_DAYS = 130;      // how much of the chart is the authored run-in
+const FINALE_GAP = 560;       // px between a dive gate and the climb gate after it
+const FINALE_WALL_FRAC = 0.60;// how far down the wall reaches; bigger = lower slot
+
+function buildFinale(x0, x1){
+  let x = x0, gates = 0;
+  while (x < x1 && gates < 24){
+    if (x + FINALE_GAP > x1) break;                 // never place past the finish
+    items.push({ type:'wall', x, frac: FINALE_WALL_FRAC, w: 38, ob:true, high:true });
+    x += FINALE_GAP;
+    items.push({ type:'rock', x, dy: 30, r: 22, ob:true });
+    x += FINALE_GAP;
+    gates++;
+  }
+  return gates;
+}
+
 // Fresh random layout every run; the chart underneath never changes.
 function spawnCourse(){
   const rng = mulberry32((Math.random()*0x7fffffff)|0);
@@ -500,9 +540,13 @@ function spawnCourse(){
     items.push({ type:'wall', x:hx, frac:0.22 + rng()*0.20, w:38, ob:true, high:true });
     hx += 560 + rng()*480;
   }
+  // The last stretch is hand-built; drop whatever the random pass left there.
+  const gEnd = terrain.finishX - SEG*3;              // a clear breath before the pole
+  const gStart = gEnd - FINALE_DAYS*SEG;
+  items = items.filter(it => it.x < gStart);
+  buildFinale(gStart, gEnd);
   for (const it of items) it.hit = false;
 }
-function resetCourse(){ for (const it of items) it.hit = false; }
 
 /* sky-hazard geometry: fraction of local ceiling→chart clearance */
 function wallBottom(it){ return 34 + (groundY(it.x) - 34) * it.frac; }
@@ -998,6 +1042,7 @@ function sfx(name){
       ping(392,0.3,0.15,0.5); ping(311,0.3,0.15,0.68); ping(233,0.5,0.15,0.86); // sad jingle
       break;
     }
+    case 'firework': noise(0.5,'highpass',900,240,0.10); ping(880+Math.random()*500, 0.5, 0.05, 0.02); break;
     case 'thunder': noise(1.1,'lowpass',300,60,0.15); break;   // background weather, not a jump-scare
     case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
     case 'shieldUp': { ping(660,0.16,0.18); ping(990,0.22,0.2,0.08); ping(1320,0.3,0.18,0.16); break; }
@@ -1066,6 +1111,135 @@ function musicTick(){
     }
     mus.next += stepDur;
     mus.step++;
+  }
+}
+
+
+/* =====================================================================
+   PEG FLAG — the flagpole on the last day of the chart. Same flat
+   folded-paper vocabulary as everything else here: polygons and fold
+   shading, no images, nothing to load.
+   ===================================================================== */
+const POLE_H = 232;                       // pole height above its base
+const POLE_COL = '#8FA98C', POLE_HI = '#B6C9B0', BALL_COL = '#5E7A5E';
+const FLAG_COL = '#E4572E', FLAG_HI = '#F5B32B';
+
+/// t is seconds since the win, or -1 while the run is still going. The flag sits
+/// at the top of the pole until you touch it, then drops — that fall IS the
+/// Mario beat, so it is driven off the win clock rather than being decorative.
+function drawFlagpole(sx, t){
+  const gy = groundY(terrain.finishX);
+  ctx.save();
+  ctx.translate(sx, gy);
+
+  // ---- base block ----
+  poly([[-30,0],[30,0],[24,-20],[-24,-20]], '#E7E0D2');
+  poly([[-24,-20],[24,-20],[19,-30],[-19,-30]], '#D5CCBA');
+  poly([[-19,-30],[19,-30],[19,-27],[-19,-27]], '#C3B9A4');
+
+  // ---- pole ----
+  poly([[-3.5,-30],[3.5,-30],[3.5,-POLE_H],[-3.5,-POLE_H]], POLE_COL);
+  poly([[-3.5,-30],[-1.2,-30],[-1.2,-POLE_H],[-3.5,-POLE_H]], POLE_HI);   // fold highlight
+
+  // ---- ball on top ----
+  ctx.fillStyle = BALL_COL;
+  ctx.beginPath(); ctx.arc(0, -POLE_H-8, 9, 0, TAU); ctx.fill();
+  ctx.fillStyle = POLE_HI;
+  ctx.beginPath(); ctx.arc(-3, -POLE_H-11, 3, 0, TAU); ctx.fill();
+
+  // ---- flag ----
+  // Waiting at the top, or sliding down once the run is won. Eased so it drops
+  // fast and settles, the way the pole flag does.
+  const dropping = t >= 0;
+  const k = dropping ? clamp(t/0.9, 0, 1) : 0;
+  const e = 1 - Math.pow(1-k, 3);
+  const fy = lerp(-POLE_H+18, -46, e);
+  const wave = dropping ? 0 : Math.sin(now*4)*2.5;      // it flutters until you take it
+  poly([[-2,fy-13],[-2,fy+13],[-44,fy+wave]], FLAG_COL);
+  poly([[-2,fy-13],[-2,fy-6],[-44,fy+wave],[-30,fy-8+wave*0.6]], FLAG_HI);
+  ctx.save();
+  ctx.translate(-17, fy + wave*0.4);
+  ctx.fillStyle = '#FAF7F0';
+  ctx.font = 'bold 15px ui-sans-serif, system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('₵', 0, 0);
+  ctx.restore();
+
+  ctx.restore();
+}
+
+/* ---- fireworks + money, for the few seconds after the win ---- */
+const fw = [], bills = [];
+let winT = 0;
+const FW_COLS = ['#E4572E','#F5B32B','#3FA35E','#4B7BEC','#FAF7F0','#D8382F'];
+
+function burstFirework(x, y){
+  const col = FW_COLS[(Math.random()*FW_COLS.length)|0];
+  const n = 26 + (Math.random()*14|0);
+  for (let i=0;i<n;i++){
+    const a = (i/n)*TAU + Math.random()*0.1, v = 120 + Math.random()*210;
+    fw.push({ x, y, vx:Math.cos(a)*v, vy:Math.sin(a)*v, t:0, life:1.0+Math.random()*0.8, col, s:2.8+Math.random()*2.6 });
+  }
+  sfx('firework');
+}
+function newBill(){
+  return { x: Math.random()*W, y: -20 - Math.random()*H, vy: 40+Math.random()*70,
+           vx: -18+Math.random()*36, rot: Math.random()*TAU, vr: -1.6+Math.random()*3.2, s: 7+Math.random()*5 };
+}
+function updateWin(dt){
+  winT += dt;
+  // a burst every so often, high over the statue
+  if (fw.length < 260 && Math.random() < dt*4.5){
+    burstFirework(W*0.25 + Math.random()*W*0.55, H*0.10 + Math.random()*H*0.26);
+  }
+  for (let i=fw.length-1;i>=0;i--){
+    const p = fw[i];
+    p.t += dt; p.vy += 210*dt; p.vx *= (1-1.1*dt); p.vy *= (1-1.1*dt);
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    if (p.t > p.life) fw.splice(i,1);
+  }
+  while (bills.length < 46) bills.push(newBill());
+  for (const b of bills){
+    b.y += b.vy*dt; b.x += b.vx*dt; b.rot += b.vr*dt;
+    if (b.y > H+20){ Object.assign(b, newBill()); b.y = -20; }
+  }
+}
+function drawWin(){
+  for (const p of fw){
+    const k = Math.max(0, 1 - p.t/p.life);
+    ctx.globalAlpha = k * 0.35;                       // a soft trail behind each spark
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x-p.s, p.y-p.s, p.s*2, p.s*2);
+    ctx.globalAlpha = k;
+    ctx.fillRect(p.x-p.s/2, p.y-p.s/2, p.s, p.s);
+  }
+  ctx.globalAlpha = 1;
+  for (const b of bills){
+    ctx.save();
+    ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+    poly([[-b.s,-b.s*0.5],[b.s,-b.s*0.5],[b.s,b.s*0.5],[-b.s,b.s*0.5]], '#C8D5B9');
+    poly([[-b.s*0.55,-b.s*0.22],[b.s*0.55,-b.s*0.22],[b.s*0.55,b.s*0.22],[-b.s*0.55,b.s*0.22]], '#93AE86');
+    ctx.restore();
+  }
+}
+
+/// A few seconds of unambiguous good news. Same synthesized voice as the rest.
+function victoryTune(){
+  const ac = audio(); if (!ac || muted) return;
+  const t0 = ac.currentTime + 0.05;
+  const lead = [ [0,0.16],[4,0.16],[7,0.16],[12,0.32], [7,0.16],[12,0.16],[16,0.48],
+                 [14,0.16],[12,0.16],[16,0.16],[19,0.48], [24,0.72] ];
+  let t = t0;
+  for (const [semi, dur] of lead){
+    musNote(semi, t, dur*0.95, 'square', 0.05);
+    musNote(semi+12, t, dur*0.6, 'triangle', 0.022);
+    t += dur;
+  }
+  // bass under it
+  let b = t0;
+  for (const semi of [-24,-24,-17,-17,-12,-12,-17,-12]){
+    musNote(semi, b, 0.42, 'triangle', 0.06);
+    b += 0.44;
   }
 }
 
@@ -1142,10 +1316,14 @@ async function openRunSession(){
 let best = parseInt(localStorage.getItem('pnj_best')||'0',10) || 0;
 function playerName(){ return (localStorage.getItem('pnj_name')||'').trim(); }
 
+/// Returns { me, error }. The POST response used to be awaited and dropped on
+/// the floor, so a rejected run looked identical to a saved one: the player was
+/// told NEW PERSONAL BEST while the board had already refused the score, and
+/// nothing anywhere said otherwise. A save that fails has to say so.
 async function submitScore(run){
   const name = playerName();
   try {
-    await fetch(API+'/scores', {
+    const post = await fetch(API+'/scores', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         game: GAME, client_id: clientId, client_secret: clientSecret, session: runSession, name: name || 'anon',
@@ -1153,11 +1331,16 @@ async function submitScore(run){
         variant: variantKey, day: terrain.dateDay,
       }),
     });
+    if (!post.ok){
+      let why = 'the board turned it down';
+      try { const e = await post.json(); if (e && e.error) why = e.error; } catch(_){}
+      return { me: null, error: why };
+    }
     // where did that land us? drives the champion card
     const r = await fetch(`${API}/scores?game=${GAME}&period=daily&client_id=${encodeURIComponent(clientId)}`);
     const j = await r.json();
-    return j && j.me ? j.me : null;
-  } catch(e){ return null; }
+    return { me: (j && j.me) ? j.me : null, error: null };
+  } catch(e){ return { me: null, error: 'no connection to the board' }; }
 }
 let boardPeriod = 'daily';
 async function loadBoard(){
@@ -1281,7 +1464,7 @@ function press(){
   if (state==='playing'){ input.held=true; input.pressed=true; emitThrust(); }
   else if (state==='countdown'){ input.held=true; }              // pre-arm the boost
   else if (state==='menu' && !panelOpen()) startRun();
-  else if (state==='dead' && overShown && !panelOpen()) restart();
+  else if ((state==='dead' || state==='won') && overShown && !panelOpen()) restart();
 }
 function release(){ input.held=false; }
 function panelOpen(){ return !el('board').classList.contains('hidden'); }
@@ -1302,19 +1485,37 @@ window.addEventListener('blur', release);
    GAME STATE
    ===================================================================== */
 let state = 'boot';          // boot | menu | countdown | playing | dead
-let camX = 0, runTime = 0, score = 0, coins = 0, runStartTs = 0, now = 0;
+let camX = 0, rideX = 0, runTime = 0, score = 0, coins = 0, runStartTs = 0, now = 0;
 let countdownT = 0, goT = 0;
 let deathBits = [];          // paper-shred particles on death
 let overShown = false;
 let lastRun = null;
 
 function scrollSpeed(){
-  return Math.min(MAX_SPEED, BASE_SPEED + runTime*RAMP);
+  const warmed = Math.min(MAX_SPEED, BASE_SPEED + runTime*RAMP);
+  if (!terrain) return warmed;
+  const p = clamp(rideX / terrain.finishX, 0, 1);
+  if (p <= SURGE_FROM) return warmed;
+  const k = (p - SURGE_FROM) / (1 - SURGE_FROM);
+  return warmed + Math.pow(k, 1.7) * (END_SPEED - MAX_SPEED);
+}
+/// Where a jump taken at world x0 comes back down, at the speed the finale is
+/// actually played at. The finale is spaced off this rather than off a guessed
+/// constant, so it stays honest if the physics or the speed are retuned.
+function jumpArc(x0, spd){
+  const dt = 1/240;
+  let x = x0, y = groundY(x0), vy = (VARIANTS.moto ? VARIANTS.moto.jumpV : -830) - spd*0.12;
+  for (let i=0; i<2000; i++){
+    vy += GRAVITY*dt; y += vy*dt; x += spd*dt;
+    if (vy >= 0 && y >= groundY(x)) break;
+  }
+  return { land: x, len: x - x0 };
 }
 
 function startRun(){
   musicStop();
-  camX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
+  camX = 0; rideX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
+  fw.length = 0; bills.length = 0; winT = 0;
   rings.length = 0; puffs.length = 0; thrustT = 0;
   shield = 0; shieldFlash = 0;
   wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1; wx.dwell = 0;
@@ -1332,6 +1533,19 @@ function startRun(){
   sfx('click');
 }
 
+
+function win(){
+  if (state!=='playing') return;
+  state = 'won';
+  winT = 0; fw.length = 0; bills.length = 0;
+  wx.prev = wx.cur; wx.cur = 0; wx.t = 0; wx.dwell = 0;   // 0 = sun: the weather breaks for you
+  musicStop();
+  victoryTune();
+  for (let i=0;i<5;i++) setTimeout(()=>{ if (state==='won') burstFirework(W*0.2+Math.random()*W*0.6, H*0.1+Math.random()*H*0.25); }, i*260);
+  score += WIN_BONUS;
+  endRun('the Peg Flag', true);
+}
+
 function die(cause){
   if (state!=='playing') return;
   state = 'dead';
@@ -1342,22 +1556,39 @@ function die(cause){
   for (let i=0;i<26;i++){
     deathBits.push({ x:px, y:py, vx:(Math.random()-0.3)*420, vy:(Math.random()-0.75)*520, rot:Math.random()*TAU, vr:(Math.random()-0.5)*14, s:3+Math.random()*6, col: Math.random()<0.5?'#FAF7F0':'#E4572E' });
   }
-  const distance = Math.round(camX/10);              // server unit (anti-cheat caps)
-  const days = Math.max(1, Math.round(camX/SEG));    // what the player sees: days of chart
+  endRun(cause, false);
+}
+
+/// Shared tail of every run, won or lost: bank it, submit it, show it.
+function endRun(cause, won){
+  const distance = Math.round(rideX/10);             // server unit (anti-cheat caps)
+  const days = Math.max(1, Math.round(rideX/SEG));   // what the player sees: days of chart
   lastRun = { score: Math.round(score), distance, days, durationMs: Math.round(performance.now()-runStartTs), cause };
   const isBest = lastRun.score > best;
   if (isBest){ best = lastRun.score; localStorage.setItem('pnj_best', String(best)); }
-  track('game_over', { score:lastRun.score, distance, days, run_duration_ms:lastRun.durationMs, obstacles_hit:cause });
+  track('game_over', { score:lastRun.score, distance, days, run_duration_ms:lastRun.durationMs, obstacles_hit:cause, won:!!won });
   lastRank = null;
   el('champWrap').classList.add('hidden');
-  submitScore(lastRun).then(me => {
+  submitScore(lastRun).then(res => {
+    const me = res && res.me;
     lastRank = me;
+    const warn = el('saveWarn');
+    if (res && res.error){
+      warn.textContent = 'Not saved to the leaderboard: ' + res.error + '.';
+      warn.classList.remove('hidden');
+      return;                                    // no rank, so no champion card either
+    }
+    warn.classList.add('hidden');
     if (lastRun && lastRun.score > hiScore){ hiScore = lastRun.score; localStorage.setItem('pnj_hi_'+GAME, String(hiScore)); }
     if (me && me.rank === 1 && me.score === lastRun.score) showChampion(lastRun, me, 'daily');
   });
   setTimeout(()=>{
     el('finalScore').textContent = lastRun.score.toLocaleString();
-    el('deathCause').textContent = 'Taken out by ' + cause + '.';
+    el('overTitle').innerHTML = won ? 'YOU MADE IT<span class="accent">!</span>'
+                                    : 'REKT<span class="accent">!</span>';
+    el('deathCause').textContent = won
+      ? 'You rode every day of the chart and reached the Peg Flag. +' + WIN_BONUS.toLocaleString() + ' bonus.'
+      : 'Taken out by ' + cause + '.';
     el('statDist').textContent = days.toLocaleString();
     el('statCoins').textContent = coins;
     el('statBest').textContent = best.toLocaleString();
@@ -1375,7 +1606,7 @@ function die(cause){
     }
     el('over').classList.remove('hidden');
     overShown = true;
-  }, 650);
+  }, won ? 3400 : 650);   // let the fireworks have the screen first
 }
 
 function restart(){
@@ -1440,9 +1671,11 @@ function frame(ts){
     goT = Math.max(0, goT - dt);
     const spd = scrollSpeed();
     camX += spd*dt;
-    if (camX >= terrain.worldLen){ camX -= terrain.worldLen; resetCourse(); }
+    rideX += spd*dt;
     score += spd*dt*0.02;
-    updatePlayer(dt);
+    // The chart ends. Riding every day of it is the win, not a lap counter.
+    if (camX + W*PLAYER_SX >= terrain.finishX) win();
+    if (state==='playing') updatePlayer(dt);
     if (state==='playing') checkCollisions();
     updateWeather(dt);
     updateParticles(dt, spd);
@@ -1451,6 +1684,9 @@ function frame(ts){
     musicTick();
   } else if (state==='dead'){
     for (const b of deathBits){ b.vy += 1400*dt; b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt; }
+    updateWeather(dt); updateParticles(dt, 0);
+  } else if (state==='won'){
+    updateWin(dt);
     updateWeather(dt); updateParticles(dt, 0);
   } else {
     updateWeather(dt); updateParticles(dt, 40);
@@ -1527,8 +1763,9 @@ function render(){
   drawItems();
   if (state==='playing') drawThrust();
   if (state==='playing') drawShield();
-  if (state==='playing' || state==='menu' || state==='countdown') drawPlayer();
+  if (state==='playing' || state==='menu' || state==='countdown' || state==='won') drawPlayer();
   if (state==='dead') drawDeathBits();
+  if (state==='won') drawWin();
   drawParticles();
   drawFloaters();
   // Weather is scenery: it goes UNDER the UI. Drawing the storm's dim over the
@@ -1536,7 +1773,7 @@ function render(){
   const dark = wmix('dark');
   if (dark>0.01){ ctx.fillStyle=`rgba(38,36,48,${dark})`; ctx.fillRect(0,0,W,H); }
 
-  if (state==='playing' || state==='dead' || state==='countdown') drawHUD();
+  if (state==='playing' || state==='dead' || state==='countdown' || state==='won') drawHUD();
 
   // 3-2-1 countdown + GO! flash
   if (state==='countdown' && countdownT > 0){
@@ -1628,6 +1865,9 @@ function drawTerrain(){
 }
 
 function drawItems(){
+  // The pole stands on the last day, so it comes over the horizon as you close in
+  const fsx = terrain.finishX - camX;
+  if (fsx > -140 && fsx < W+140) drawFlagpole(fsx, state==='won' ? winT : -1);
   const lo = camX-80, hi = camX+W+80;
   for (const it of items){
     if (it.hit || it.x<lo || it.x>hi) continue;
@@ -1814,10 +2054,16 @@ function drawHUD(){
 
   pxText('SCORE', scoreRight, labelY, labelPx, dim, 'right');
   if (scoreCol !== ink('plain', onDark)){
-    // a soft halo so the colour change is felt, not just seen
+    // A soft aura so the colour change is felt, not just seen. Drawn at the SAME
+    // font unit as the score and offset in screen pixels only: the old halo was
+    // drawn a fraction of a unit larger, and since the score is right-aligned all
+    // that extra width grew leftward, so it read as a ghost sitting off to one
+    // side rather than a glow. Scaling pixel text can never be symmetric here.
     ctx.save();
-    ctx.globalAlpha = 0.26 + Math.sin(now*6)*0.10;
-    pxText(txt, scoreRight, valueY - 1, px + 0.6, scoreCol, 'right');
+    ctx.globalAlpha = 0.20 + Math.sin(now*6)*0.09;
+    for (const [ox, oy] of [[-2,0],[2,0],[0,-2],[0,2]]) {
+      pxText(txt, scoreRight + ox, valueY + oy, px, scoreCol, 'right');
+    }
     ctx.restore();
   }
   // a dark ink wants a light edge and vice versa
