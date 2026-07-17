@@ -53,6 +53,7 @@ h1 .accent { color:#E4572E; }
 
 /* ---------- character select ---------- */
 #chars { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:14px; }
+
 .char-card {
   width:104px; padding:6px 4px 7px; cursor:pointer; background:#FFFEFA;
   border:2px solid rgba(58,54,48,0.12); position:relative;
@@ -239,9 +240,9 @@ const GRAVITY = 2300;
 // days of the chart are always the hardest part of the run and always the same
 // hardest part for everyone — a player who dawdles cannot arrive at the finale
 // going slower than a player who did not.
-const BASE_SPEED = 300, RAMP = 9.0, MAX_SPEED = 790;
-const END_SPEED = 1650;        // flat out, at the Peg Flag
-const SURGE_FROM = 0.4;       // fraction of the chart ridden before the surge starts
+const BASE_SPEED = 430, RAMP = 15.0, MAX_SPEED = 1180;
+const END_SPEED = 2200;        // flat out, at the Peg Flag
+const SURGE_FROM = 0.35;       // fraction of the chart ridden before the surge starts
 const WIN_BONUS = 5000;      // finishing the whole chart should top the board
 const PLAYER_SX = 0.30;      // player screen x as fraction of width
 const PLAYER_R = 15;         // collision radius
@@ -319,6 +320,34 @@ function buildGeometry(){
     hs[j] = t.bottom - (t.bottom-t.top)*clamp(v,-0.15,1.15);
   }
   t.hs = hs;
+  // A heavily smoothed copy of the chart. The parallax bands hang off this rather
+  // than off a fixed screen fraction: the ground line swings ~670px between the
+  // chart's low and its ATH, so anything pinned to a constant height spends most
+  // of the run buried under it. Smoothed because the raw chart at 1600px/s would
+  // make the whole horizon jitter.
+  const SKY_WIN = 90;                     // days either side
+  const sky = new Float32Array(N);
+  let acc = 0;
+  for (let i=0;i<N;i++) acc += norm[i];
+  const mean = acc / N;
+  for (let i=0;i<N;i++){
+    let s2 = 0, c = 0;
+    for (let j=i-SKY_WIN; j<=i+SKY_WIN; j+=6){ const k = ((j%N)+N)%N; s2 += norm[k]; c++; }
+    sky[i] = lerp(s2/c, mean, 0.25);      // pull toward the mean so it never lurches
+  }
+  t.sky = sky;
+  // A lightly smoothed copy for the parallax ridges. The bands sample the chart at
+  // 5x compression, which packs ~55 days across the screen: sampled raw, that is
+  // far past what the polyline can represent, so the peaks re-shaped as they slid
+  // (classic aliasing). Smoothing first removes the detail that cannot survive.
+  const RID_WIN = 5;
+  const ridge = new Float32Array(N);
+  for (let i=0;i<N;i++){
+    let s3 = 0, c2 = 0;
+    for (let j=i-RID_WIN; j<=i+RID_WIN; j++){ const k = ((j%N)+N)%N; s3 += norm[k]; c2++; }
+    ridge[i] = s3/c2;
+  }
+  t.ridge = ridge;
 }
 
 function wrapX(x){ const L=terrain.worldLen; x%=L; if(x<0)x+=L; return x; }
@@ -507,7 +536,7 @@ function spawnCourse(){
   const end = terrain.worldLen - SEG*(BRIDGE+1);
   while (x < end){
     const r = rng();
-    if (r < 0.52){                                  // collectibles
+    if (r < 0.34){                                  // collectibles (was 0.52)
       const k = rng();
       if (k < 0.55){                                // coin trail
         const cnt = 3+Math.floor(rng()*4);
@@ -523,20 +552,23 @@ function spawnCourse(){
         items.push({ type:'sandwich', x, dy:62 + rng()*70, r:17, val:30 });
       } else if (k < 0.94){
         items.push({ type:'diamond', x, dy:148, r:17, val:50 });
-      } else {
+      } else if (k < 0.985){
         // rarest pickup on the course: it cancels a death
         items.push({ type:'tablet', x, dy:70 + rng()*80, r:19, val:25, shield:true });
+      } else {
+        // rarer still, and the only thing in the game that changes how it looks
+        items.push({ type:'mushroom', x, dy:54 + rng()*90, r:17, val:100, trip:true });
       }
     } else {                                        // obstacles
       const k = rng();
-      if (k < 0.22)      items.push({ type:'rock',    x, dy:16, r:19, ob:true });
-      else if (k < 0.42) items.push({ type:'rcandle', x, dy:30, r:18, ob:true });
-      else if (k < 0.60) items.push({ type:'cloud',   x, dy:118, r:24, ob:true });
-      else if (k < 0.74) items.push({ type:'bomb',    x, dy:15, r:16, ob:true });
-      else if (k < 0.87) items.push({ type:'sec',     x, dy:130 + rng()*60, r:21, ob:true });
-      else               items.push({ type:'notice',  x, dy:75 + rng()*50,  r:19, ob:true });
+      if (k < 0.26)      items.push({ type:'rock',    x, dy:16, r:19, ob:true });
+      else if (k < 0.48) items.push({ type:'rcandle', x, dy:30, r:18, ob:true });
+      else if (k < 0.68) items.push({ type:'bomb',    x, dy:15, r:16, ob:true });
+      else if (k < 0.82) items.push({ type:'cloud',   x, dy:118, r:24, ob:true });
+      else if (k < 0.92) items.push({ type:'sec',     x, dy:110 + rng()*70, r:21, ob:true });
+      else               items.push({ type:'notice',  x, dy:62 + rng()*56,  r:19, ob:true });
     }
-    x += 270 + rng()*330;
+    x += 145 + rng()*165;      // was 270+330: the course was airy enough to freewheel
   }
   // The last stretch is hand-built; drop whatever the random pass left there.
   const gEnd = terrain.finishX - SEG*3;              // a clear breath before the pole
@@ -693,11 +725,19 @@ function drawItem(it, sx){
       }
       break;
     }
+    case 'mushroom': {
+      const bob = Math.sin(now*2.2 + it.x*0.4)*4;
+      ctx.translate(0, bob);
+      ctx.rotate(Math.sin(now*1.5 + it.x)*0.10);
+      drawMushroom(0, 9, 1.5, 0);
+      break;
+    }
     case 'sandwich': {
       // Richard's sandwich. A folded-paper club, stacked and unmistakable.
       const bob = Math.sin(now*2.4 + it.x*0.5)*3;
       ctx.translate(0,bob); ctx.rotate(-0.12);
-      // bottom slice
+      // bottom slice. Longer than it is tall: it should read as a sub, not a stack.
+      ctx.scale(1.45, 1);
       poly([[-16,4],[16,4],[14,10],[-14,10]], '#E8C88A', 'rgba(58,54,48,0.35)');
       // filling: lettuce frill, tomato, cheese
       ctx.fillStyle='#5FA855';
@@ -836,7 +876,7 @@ function updatePlayer(dt){
     if (player.y >= gy && player.vy >= 0){
       let d = player.angle - Math.atan2(slope,1);
       while (d > Math.PI) d -= TAU; while (d < -Math.PI) d += TAU;
-      if (Math.abs(d) > 1.05) return die('a botched flip');
+      if (Math.abs(d) > 0.70) return die('a botched flip');   // was 1.05: almost anything stuck
       const flips = Math.floor(player.spin / TAU + 0.25);                        // bank clean backflips
       if (flips > 0){
         const bonus = flips * 50;
@@ -1049,6 +1089,7 @@ function sfx(name){
       ping(392,0.3,0.15,0.5); ping(311,0.3,0.15,0.68); ping(233,0.5,0.15,0.86); // sad jingle
       break;
     }
+    case 'shroom': { ping(220,0.5,0.06); ping(330,0.5,0.055,0.08); ping(440,0.6,0.05,0.16); ping(660,0.7,0.045,0.24); break; }
     case 'firework': noise(0.5,'highpass',900,240,0.10); ping(880+Math.random()*500, 0.5, 0.05, 0.02); break;
     case 'thunder': noise(1.1,'lowpass',300,60,0.15); break;   // background weather, not a jump-scare
     case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
@@ -1247,6 +1288,444 @@ function victoryTune(){
   for (const semi of [-24,-24,-17,-17,-12,-12,-17,-12]){
     musNote(semi, b, 0.42, 'triangle', 0.06);
     b += 0.44;
+  }
+}
+
+
+/* =====================================================================
+   PARALLAX SCENERY — props planted on the far hills.
+   The hills are already the chart, sampled at two parallax depths. Scenery
+   rides those same lines, so a prop sits on the ridge it belongs to and the
+   nearer hill occludes the farther one without any depth sorting.
+   Everything is tinted toward the weather's mountain colour by distance:
+   that is both aerial perspective AND what keeps the fields from fighting
+   the grey/blue sky when a storm rolls in.
+   ===================================================================== */
+/// The background is not a setting. It is rolled at the start of every run, so you
+/// get what you get; 'b' cycles it for anyone who finds out, and nothing on screen
+/// says so. Moonshot's pool is the moon alone: its whole setting is that it is on
+/// the moon, which a random meadow would rather undo.
+const SCENES = ['space', 'meadow', 'forest', 'tropical'];
+const SCENE_POOL = GAME === 'pump-and-jump' ? ['forest', 'meadow', 'tropical'] : ['space'];
+function rollScene(){ return SCENE_POOL[(Math.random()*SCENE_POOL.length)|0]; }
+let scene = rollScene();
+function cycleScene(){ scene = SCENES[(SCENES.indexOf(scene) + 1) % SCENES.length]; }
+
+/// Deterministic per-slot hash. Props must not shimmer as the camera moves, so
+/// what stands at a given slot is a pure function of that slot, never Math.random.
+function h01(n){
+  n = Math.imul(n ^ (n>>>15), 0x2c1b3c6d); n ^= n>>>12;
+  n = Math.imul(n ^ (n>>>7),  0x297a2d39); n ^= n>>>15;
+  return (n>>>0) / 4294967296;
+}
+
+/// The two hill bands, matching drawMountains exactly. par/yBase/amp are shared
+/// so scenery lands on the ridge rather than floating over it.
+/// lift = how far above the local ground line this ridge sits (further = higher on
+/// screen). amp = how much the chart at this parallax makes it undulate.
+/// A horizon does not move, so these are fixed fractions of the screen and are
+/// derived from nothing about the player. They were originally pinned around
+/// 0.72H, which the chart sits above 87% of the time, so the hills were buried and
+/// nobody could see they were there. Chasing the ground cured the burial and
+/// bought a bobbing horizon, which is worse. The chart is clamped to
+/// [0.30H, 0.82H], so a ridge kept above 0.30H cannot be covered at all: put them
+/// there and neither problem exists.
+const BANDS = [
+  { par:0.18, yBase:0.30, amp:0.10, haze:0.55, scale:0.72, slot:240, far:true  },
+  { par:0.42, yBase:0.40, amp:0.10, haze:0.18, scale:1.30, slot:195, far:false },
+];
+/// Continuous sample of the smoothed chart. Math.floor made this a STEP function:
+/// at a fixed screen x the day it landed on snapped as the camera moved, so every
+/// vertex jumped on its own schedule and the peaks visibly re-shaped rather than
+/// sliding past. Interpolating makes the ridge a continuous function of world x,
+/// which is the only way it translates rigidly.
+function ridgeAt(wx){
+  const r = terrain.ridge, N = r.length;
+  const f = wrapX(wx)/SEG;
+  const i = Math.floor(f), t = f - i;
+  return lerp(r[i % N], r[(i+1) % N], t);
+}
+function bandY(sx, b){
+  const v = ridgeAt((camX*b.par + sx) * 5);
+  return H*b.yBase - v*(H*b.amp) + tripWarp(sx, b.far ? 0 : 0.5)*0.75;
+}
+function haze(rgb, t){ return rgbStr(rgbLerp(rgb, wmixCol('mount', null), t)); }
+
+/// Each scene's own ground. The bands used to be filled with the weather's mountain
+/// colour, which is grey-blue in every state, so the field was grey whatever the
+/// theme. Weather still has a say below, but it no longer gets to decide: a storm
+/// should mute the grass, not turn it to slate.
+const SCENE_GROUND = {
+  meadow:   { near:[122,164,88],  far:[146,166,132] },
+  forest:   { near:[84,116,74],   far:[104,128,106] },
+  tropical: { near:[146,172,102], far:[158,174,140] },
+};
+function groundCol(b){
+  const g = SCENE_GROUND[scene] || SCENE_GROUND.meadow;
+  return b.far ? g.far : g.near;
+}
+
+function drawPond(x, gy, s, hz){
+  // Water takes its colour from the sky, because that is what water does.
+  const sky = wmixCol('sky', 1);
+  const deep = rgbLerp([72,122,158], sky, 0.30), glint = rgbLerp([158,198,222], sky, 0.35);
+  ctx.fillStyle = rgbStr(rgbLerp(deep, wmixCol('mount',null), hz*0.5));
+  ctx.beginPath(); ctx.ellipse(x, gy-1.6*s, 27*s, 4.6*s, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = rgbStr(rgbLerp(glint, wmixCol('mount',null), hz*0.5));
+  ctx.beginPath(); ctx.ellipse(x-9*s, gy-2.8*s, 9*s, 1.3*s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x+8*s, gy-1.4*s, 5*s, 0.8*s, 0, 0, TAU); ctx.fill();
+}
+
+/* ---- birds: forest only, and the only scenery that is not nailed down ---- */
+const birds = [];
+function seedBirds(){
+  birds.length = 0;
+  for (let i=0;i<1;i++) birds.push({   // was 7: a flock is scenery, one bird is a bird
+    x: Math.random()*W, y: H*0.10 + Math.random()*H*0.20,
+    v: 12 + Math.random()*20, ph: Math.random()*TAU, s: 0.7 + Math.random()*0.7,
+  });
+}
+function updateBirds(dt){
+  if (scene !== 'forest' || !W) return;
+  if (!birds.length) seedBirds();
+  const drift = scrollSpeed()*0.05;          // they lag the world, being far off
+  for (const b of birds){
+    b.x -= (b.v + drift)*dt;
+    b.y += Math.sin(now*0.7 + b.ph)*5*dt;
+    if (b.x < -40){ b.x = W + 40; b.y = H*0.10 + Math.random()*H*0.20; }
+  }
+}
+function drawBirds(){
+  if (scene !== 'forest' || !birds.length) return;
+  ctx.strokeStyle = haze([58,62,72], 0.42);
+  ctx.lineCap = 'round';
+  for (const b of birds){
+    const f = Math.sin(now*7 + b.ph), a = Math.abs(f);
+    ctx.lineWidth = 1.5*b.s;
+    ctx.beginPath();
+    ctx.moveTo(b.x - 7*b.s, b.y + f*2*b.s);
+    ctx.quadraticCurveTo(b.x - 2.5*b.s, b.y - 3.4*b.s*a - 1, b.x, b.y);
+    ctx.quadraticCurveTo(b.x + 2.5*b.s, b.y - 3.4*b.s*a - 1, b.x + 7*b.s, b.y + f*2*b.s);
+    ctx.stroke();
+  }
+}
+
+/// A real treeline, not one tree per slot. Pines are drawn at a fixed pitch right
+/// across the far band so the ridge reads as forested hillside rather than as a
+/// bald hill with the occasional lonely conifer on it.
+function drawTreeline(b){
+  // Walk WORLD slots and project them, never screen positions. Deriving k from sx
+  // meant a tree's identity changed as the camera moved, so its height and jitter
+  // were re-rolled every frame and the whole treeline shimmered. Same bug the
+  // daisies had. A tree is a fixed thing at a fixed place; only the camera moves.
+  const pitch = 34;                    // was 13: a wall of pines, and 3x the draws
+  const p = camX*b.par;
+  const k0 = Math.floor((p - pitch)/pitch), k1 = Math.ceil((p + W + pitch)/pitch);
+  for (let k = k0; k <= k1; k++){
+    const wx = k*pitch + (h01(k*17)-0.5)*pitch*0.7;
+    const sx = wx - p;
+    const s = b.scale * (0.62 + h01(k*41)*0.7);
+    drawPine(sx, bandY(sx, b) + 1, s, b.haze);
+  }
+}
+
+
+/* ---------------- meadow ---------------- */
+function drawTree(x, gy, s, hz){
+  poly([[x-1.6*s, gy],[x+1.6*s, gy],[x+1.2*s, gy-9*s],[x-1.2*s, gy-9*s]], haze([124,96,66], hz));
+  poly([[x-8*s, gy-8*s],[x+8*s, gy-8*s],[x, gy-26*s]], haze([86,140,84], hz));
+  poly([[x-6*s, gy-14*s],[x+6*s, gy-14*s],[x, gy-30*s]], haze([104,158,96], hz));
+}
+function drawCow(x, gy, s, hz, flip){
+  const f = flip ? -1 : 1;
+  const W_ = 13*s, Hh = 8*s;
+  // legs first so the body covers their tops
+  for (const o of [-0.62, -0.3, 0.3, 0.62])
+    poly([[x+o*W_-0.9*s, gy-3*s],[x+o*W_+0.9*s, gy-3*s],[x+o*W_+0.9*s, gy],[x+o*W_-0.9*s, gy]], haze([60,56,54], hz));
+  poly([[x-W_, gy-3*s],[x+W_, gy-3*s],[x+W_, gy-3*s-Hh],[x-W_, gy-3*s-Hh]], haze([248,246,240], hz));
+  // patches: the read at this size is "black and white lump", so keep them big
+  poly([[x-W_*0.55, gy-3*s-Hh],[x-W_*0.05, gy-3*s-Hh],[x-W_*0.2, gy-3*s-Hh*0.35],[x-W_*0.7, gy-3*s-Hh*0.4]], haze([48,44,42], hz));
+  poly([[x+W_*0.2, gy-3*s-Hh*0.9],[x+W_*0.8, gy-3*s-Hh],[x+W_*0.85, gy-3*s-Hh*0.3],[x+W_*0.3, gy-3*s-Hh*0.45]], haze([48,44,42], hz));
+  // head
+  poly([[x+f*W_, gy-3*s-Hh*0.95],[x+f*(W_+6*s), gy-3*s-Hh*1.15],[x+f*(W_+6.5*s), gy-3*s-Hh*0.45],[x+f*W_, gy-3*s-Hh*0.4]], haze([44,40,38], hz));
+  poly([[x+f*(W_+1.5*s), gy-3*s-Hh*1.15],[x+f*(W_+3*s), gy-3*s-Hh*1.6],[x+f*(W_+4*s), gy-3*s-Hh*1.1]], haze([44,40,38], hz));
+}
+/// seed is the SLOT, not the screen position. Hashing on x meant every daisy was
+/// re-rolled on every frame as the camera moved, so the whole clump flickered and
+/// jumped: the "glitching" was the flowers being reinvented 60 times a second.
+function drawDaisies(x, gy, s, hz, seed){
+  const white = haze([252,250,246], hz), gold = haze([242,193,78], hz), stem = haze([96,146,88], hz);
+  for (let i=0;i<7;i++){
+    const r = h01(seed*7 + i*131);
+    const dx = x + (r-0.5)*40*s, dy = gy - (1 + h01(i*57 + seed*13)*7)*s, rr = 1.5*s;
+    ctx.fillStyle = stem; ctx.fillRect(dx-0.4*s, dy, 0.8*s, 6*s);
+    ctx.fillStyle = white;
+    for (let p=0;p<5;p++){ const a = p*(TAU/5); ctx.beginPath(); ctx.arc(dx+Math.cos(a)*rr, dy+Math.sin(a)*rr, rr*0.85, 0, TAU); ctx.fill(); }
+    ctx.fillStyle = gold; ctx.beginPath(); ctx.arc(dx, dy, rr*0.75, 0, TAU); ctx.fill();
+  }
+}
+function drawHedge(x, gy, s, hz){
+  const c = haze([92,132,84], hz);
+  for (let i=-2;i<=2;i++){ ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x+i*7*s, gy-4*s, 5.5*s, Math.PI, 0); ctx.fill(); }
+  ctx.fillStyle = c; ctx.fillRect(x-16*s, gy-4*s, 32*s, 4*s);
+}
+
+
+/* ---------------- mountain forest ---------------- */
+function drawPine(x, gy, s, hz){
+  const trunk = haze([98,74,54], hz), a = haze([44,92,64], hz), b = haze([62,118,80], hz);
+  poly([[x-1.4*s, gy],[x+1.4*s, gy],[x+1.1*s, gy-7*s],[x-1.1*s, gy-7*s]], trunk);
+  poly([[x-9*s, gy-5*s],[x+9*s, gy-5*s],[x, gy-19*s]], a);
+  poly([[x-7*s, gy-13*s],[x+7*s, gy-13*s],[x, gy-25*s]], b);
+  poly([[x-4.6*s, gy-20*s],[x+4.6*s, gy-20*s],[x, gy-31*s]], a);
+}
+function drawBoulder(x, gy, s, hz){
+  poly([[x-9*s,gy],[x-6.5*s,gy-6.5*s],[x+0.5*s,gy-9*s],[x+7.5*s,gy-5*s],[x+9*s,gy]], haze([134,134,140], hz));
+  poly([[x-6.5*s,gy-6.5*s],[x+0.5*s,gy-9*s],[x-1*s,gy-4*s],[x-7*s,gy-2.5*s]], haze([102,102,110], hz));
+}
+function drawLog(x, gy, s, hz){
+  poly([[x-11*s,gy],[x-11*s,gy-4.6*s],[x+11*s,gy-4.6*s],[x+11*s,gy]], haze([118,86,58], hz));
+  ctx.fillStyle = haze([160,126,90], hz);
+  ctx.beginPath(); ctx.ellipse(x+11*s, gy-2.3*s, 1.7*s, 2.3*s, 0, 0, TAU); ctx.fill();
+}
+function drawBear(x, gy, s, hz, flip){
+  const f = flip ? -1 : 1, c = haze([74,54,42], hz), d = haze([52,38,30], hz);
+  for (const o of [-0.58, 0.52])
+    poly([[x+o*10*s-2*s, gy-5*s],[x+o*10*s+2*s, gy-5*s],[x+o*10*s+2*s, gy],[x+o*10*s-2*s, gy]], d);
+  ctx.fillStyle = c;
+  ctx.beginPath(); ctx.ellipse(x, gy-8.5*s, 11*s, 5.5*s, 0, 0, TAU); ctx.fill();     // body
+  ctx.beginPath(); ctx.arc(x+f*11.5*s, gy-11.5*s, 4.2*s, 0, TAU); ctx.fill();        // head
+  ctx.beginPath(); ctx.arc(x+f*9.6*s, gy-15*s, 1.6*s, 0, TAU); ctx.fill();           // ears
+  ctx.beginPath(); ctx.arc(x+f*13.4*s, gy-14.6*s, 1.6*s, 0, TAU); ctx.fill();
+  ctx.fillStyle = haze([124,98,74], hz);
+  ctx.beginPath(); ctx.arc(x+f*14.6*s, gy-10.4*s, 2.1*s, 0, TAU); ctx.fill();        // muzzle
+}
+/// The tail IS the squirrel at this size: the body is barely six pixels, so the
+/// silhouette has to be carried by the curl behind it.
+function drawSquirrel(x, gy, s, hz, flip){
+  const f = flip ? -1 : 1, c = haze([158,86,44], hz), t = haze([182,110,62], hz);
+  ctx.fillStyle = t;
+  ctx.beginPath();
+  ctx.moveTo(x-f*2.5*s, gy-2*s);
+  ctx.quadraticCurveTo(x-f*11*s, gy-5*s, x-f*8.5*s, gy-14*s);
+  ctx.quadraticCurveTo(x-f*6.5*s, gy-19.5*s, x-f*1.5*s, gy-15.5*s);
+  ctx.quadraticCurveTo(x-f*6*s, gy-15*s, x-f*5.8*s, gy-9*s);
+  ctx.quadraticCurveTo(x-f*5.6*s, gy-4.5*s, x-f*2*s, gy-2*s);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = c;
+  ctx.beginPath(); ctx.ellipse(x, gy-4.5*s, 3.4*s, 4.4*s, 0, 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(x+f*2.2*s, gy-9.6*s, 2.5*s, 0, TAU); ctx.fill();
+  poly([[x+f*1.2*s, gy-11.6*s],[x+f*2.6*s, gy-14*s],[x+f*3.4*s, gy-11*s]], c);
+}
+
+/* ---------------- tropical ---------------- */
+function drawPalm(x, gy, s, hz, lean){
+  const t = haze([138,104,72], hz), fr = haze([64,142,104], hz), fr2 = haze([88,166,120], hz);
+  ctx.save(); ctx.translate(x, gy); ctx.rotate(lean);
+  ctx.beginPath(); ctx.moveTo(-1.8*s, 0); ctx.quadraticCurveTo(2*s, -16*s, 1.5*s, -32*s);
+  ctx.lineTo(4.5*s, -32*s); ctx.quadraticCurveTo(5*s, -16*s, 1.8*s, 0);
+  ctx.closePath(); ctx.fillStyle = t; ctx.fill();
+  for (let i=0;i<6;i++){
+    const a = -Math.PI/2 + (i-2.5)*0.5;
+    ctx.save(); ctx.translate(3*s, -32*s); ctx.rotate(a);
+    poly([[0,0],[13*s,-4*s],[19*s,1.5*s],[12*s,1.2*s]], i%2 ? fr : fr2);
+    ctx.restore();
+  }
+  ctx.fillStyle = haze([196,150,72], hz);
+  ctx.beginPath(); ctx.arc(3*s, -30*s, 2*s, 0, TAU); ctx.fill();
+  ctx.restore();
+}
+function drawFern(x, gy, s, hz){
+  const c = haze([74,150,102], hz);
+  for (let i=-2;i<=2;i++){
+    ctx.save(); ctx.translate(x, gy); ctx.rotate(i*0.34);
+    poly([[-1.4*s,0],[1.4*s,0],[0,-13*s]], c);
+    ctx.restore();
+  }
+}
+function drawHut(x, gy, s, hz){
+  poly([[x-9*s, gy],[x+9*s, gy],[x+9*s, gy-9*s],[x-9*s, gy-9*s]], haze([176,146,104], hz));
+  poly([[x-13*s, gy-9*s],[x+13*s, gy-9*s],[x, gy-20*s]], haze([150,112,66], hz));
+  poly([[x-2.5*s, gy],[x+2.5*s, gy],[x+2.5*s, gy-6*s],[x-2.5*s, gy-6*s]], haze([94,72,50], hz));
+}
+
+/* ---------------- the easter egg ---------------- */
+/// One peacock per run, somewhere out in the field. No points, no sound, nothing
+/// happens if you spot it. It is placed in the near band's world space and never
+/// where it would be on screen at the start line.
+let peacockX = 0, peacockSlot = -1;
+function placePeacock(){
+  const f = FIELD[LANDMARK_LAYER];
+  const span = terrain.finishX * f.par;
+  const kMin = Math.ceil((W*1.6) / f.slot);
+  const kMax = Math.floor(Math.max(kMin + 1, (span - W*1.5) / f.slot));
+  peacockSlot = kMin + Math.floor(Math.random() * Math.max(1, kMax - kMin));
+  peacockX = peacockSlot*f.slot + h01(peacockSlot*13 + LANDMARK_LAYER*7)*f.slot*0.7;
+}
+function drawPeacock(x, gy, s, hz){
+  const body = haze([26,104,138], hz), neck = haze([32,132,168], hz);
+  const fan1 = haze([46,150,120], hz), fan2 = haze([64,176,140], hz);
+  const eye  = haze([44,72,140], hz), eyeGold = haze([226,178,64], hz);
+  // the fan, drawn first so the bird sits in front of it
+  for (let i=-5;i<=5;i++){
+    const a = i*0.20, len = (26 - Math.abs(i)*1.1)*s;
+    ctx.save(); ctx.translate(x, gy-9*s); ctx.rotate(a);
+    poly([[-1.5*s,0],[1.5*s,0],[0.9*s,-len],[-0.9*s,-len]], i%2 ? fan1 : fan2);
+    ctx.fillStyle = eye;    ctx.beginPath(); ctx.arc(0, -len, 2.4*s, 0, TAU); ctx.fill();
+    ctx.fillStyle = eyeGold;ctx.beginPath(); ctx.arc(0, -len, 1.1*s, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  poly([[x-4*s, gy],[x+4*s, gy],[x+3*s, gy-9*s],[x-3*s, gy-9*s]], body);   // body
+  poly([[x-1.6*s, gy-8*s],[x+1.6*s, gy-8*s],[x+2.2*s, gy-18*s],[x-0.6*s, gy-18*s]], neck);  // neck
+  ctx.fillStyle = neck; ctx.beginPath(); ctx.arc(x+1.4*s, gy-19*s, 2.4*s, 0, TAU); ctx.fill();
+  poly([[x+3*s, gy-19.5*s],[x+7*s, gy-18.6*s],[x+3*s, gy-17.8*s]], eyeGold);   // beak
+  for (let i=-1;i<=1;i++){                                                      // crest
+    ctx.save(); ctx.translate(x+1.4*s, gy-21*s); ctx.rotate(i*0.32);
+    ctx.fillStyle = neck; ctx.fillRect(-0.35*s, -4*s, 0.7*s, 4*s);
+    ctx.beginPath(); ctx.arc(0, -4.6*s, 1*s, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+  for (const o of [-1.6, 1.6]) { ctx.fillStyle = body; ctx.fillRect(x+o*s-0.4*s, gy, 0.8*s, 3*s); }
+}
+
+/* ---------------- the band ---------------- */
+/// One prop, wherever it happens to stand. Split out of drawScenery so the far
+/// ridge and the field can both use it without knowing about each other.
+function drawProp(r, sx, gy, s, hz, k){
+  if (scene === 'meadow'){
+    if (r < 0.30) drawCow(sx, gy, s, hz, h01(k*3) < 0.5);
+    else if (r < 0.56) drawTree(sx, gy, s, hz);
+    else if (r < 0.72) drawDaisies(sx, gy, s, hz, k);
+    else if (r < 0.86) drawHedge(sx, gy, s, hz);
+    else drawPond(sx, gy, s, hz);
+  } else if (scene === 'forest'){
+    // Wildlife is rare on purpose: roughly one bear and a couple of squirrels in
+    // a whole run, so spotting one is luck rather than scenery.
+    if (r < 0.011/FIELD_N) drawBear(sx, gy, s, hz, h01(k*3) < 0.5);
+    else if (r < 0.030/FIELD_N) drawSquirrel(sx, gy, s*1.35, hz, h01(k*5) < 0.5);
+    else if (r < 0.62) drawPine(sx, gy, s*1.1, hz);
+    else if (r < 0.76) drawBoulder(sx, gy, s, hz);
+    else if (r < 0.86) drawLog(sx, gy, s, hz);
+    else if (r < 0.94) drawPond(sx, gy, s, hz);
+    else drawPine(sx, gy, s*0.7, hz);
+  } else {
+    if (r < 0.46) drawPalm(sx, gy, s, hz, (h01(k*9)-0.5)*0.34);
+    else if (r < 0.70) drawFern(sx, gy, s, hz);
+    else if (r < 0.80) drawHut(sx, gy, s*0.9, hz);
+    else if (r < 0.92) drawPond(sx, gy, s, hz);
+    else drawPalm(sx, gy, s*0.7, hz, (h01(k*5)-0.5)*0.5);
+  }
+}
+function drawLandmark(sx, gy, s, hz){ drawPeacock(sx, gy, s, hz); }
+
+/* =====================================================================
+   THE FIELD — the near band as a ground plane rather than a ridge.
+   Props used to sit in one line along the near ridge, with the whole
+   space between there and the chart left as flat colour: at the chart's
+   low that is a 343px wall of green with a few trees stranded on top.
+   The fix is depth. Each layer sits further down the field, and because
+   it is nearer it also scrolls faster, stands taller and hazes less.
+   Those four things together are what reads as ground receding.
+   ===================================================================== */
+const FIELD_N = 4;                   // was 5
+const FIELD = Array.from({ length: FIELD_N }, (_, L) => {
+  // Stop short of 1: a prop level with the chart line would look like it was
+  // standing on the playable surface, and the player has enough to read already.
+  const d = ((L + 0.5) / FIELD_N) * 0.78;
+  return {
+    d,
+    par:   lerp(0.42, 0.86, d),      // nearer scrolls faster: the whole trick
+    slot:  Math.round(lerp(680, 430, d)),   // was 250-155: a field, not a jumble
+
+    scale: lerp(0.72, 1.95, d),
+    haze:  lerp(0.36, 0.05, d),
+  };
+});
+const LANDMARK_LAYER = 2;            // the peacock/ship lives mid-field
+
+function drawField(){
+  const b = BANDS[1];
+  for (let L = 0; L < FIELD_N; L++){
+    const f = FIELD[L];
+    const s0 = camX*f.par;
+    const k0 = Math.floor(s0/f.slot) - 1, k1 = Math.ceil((s0+W)/f.slot) + 1;
+    for (let k = k0; k <= k1; k++){
+      const wx = k*f.slot + h01(k*13 + L*7)*f.slot*0.7;
+      const sx = wx - s0;
+      if (sx < -90 || sx > W+90) continue;
+      // The bottom of the field is the chart's FLOOR, a constant, not the chart's
+      // current line. Interpolating toward the live line made every prop ride up
+      // and down with the price: the same bug the hills had, one layer down.
+      // Where the chart is higher than a prop, the chart simply covers it, which
+      // is what a hill in front of you should do.
+      const top = bandY(sx, b);
+      const gy = lerp(top, terrain.bottom, f.d) + 1 + tripWarp(sx, L*0.9);
+      if (gy > groundY(camX + sx) + 30) continue;    // hidden behind the chart: skip the draw
+      const r = h01(k*31 + L*101);
+      const s = f.scale * (0.82 + h01(k*17 + L)*0.4);
+      if (L === LANDMARK_LAYER && k === peacockSlot){
+        drawLandmark(sx, gy, s*0.9, f.haze);
+        continue;
+      }
+      drawProp(r, sx, gy, s, f.haze, k);
+    }
+  }
+}
+
+function drawScenery(bi){
+  const b = BANDS[bi];
+  if (!b.far){ drawField(); return; }
+  const s0 = camX*b.par, k0 = Math.floor(s0/b.slot) - 1, k1 = Math.ceil((s0+W)/b.slot) + 1;
+  for (let k=k0; k<=k1; k++){
+    const wx = k*b.slot + h01(k*13+bi*7)*b.slot*0.7;
+    const sx = wx - s0;
+    if (sx < -70 || sx > W+70) continue;
+    const gy = bandY(sx, b) + 1;
+    const r = h01(k*31 + bi*101), s = b.scale*(0.8 + h01(k*17+bi)*0.45);
+    if (scene === 'forest') continue;             // its ridge is the treeline
+    drawProp(r, sx, gy, s, b.haze, k);
+  }
+}
+
+
+/* =====================================================================
+   THE MUSHROOM — red cap, white spots, and the world goes soft.
+   The background used to sway like this by accident, because the field
+   hung off the live chart line. It was a bug and it looked wrong for
+   scenery, but it was worth keeping as something you earn.
+   ===================================================================== */
+const TRIP_SECS = 9;
+let tripT = 0;
+
+/// How far the scenery is bending right now, 0 when straight. Eases in over the
+/// first moment and out over the last, so it never snaps.
+function tripAmp(){
+  if (tripT <= 0) return 0;
+  const inK  = Math.min(1, (TRIP_SECS - tripT) / 0.7);
+  const outK = Math.min(1, tripT / 2.0);
+  return Math.min(inK, outK);
+}
+/// A travelling wave, a function of WORLD x so it rolls through the scenery
+/// rather than sliding with the camera.
+function tripWarp(sx, phase){
+  const a = tripAmp();
+  if (a <= 0) return 0;
+  const wx = camX + sx;
+  return (Math.sin(wx*0.005 + now*2.2 + phase) * 34 + Math.sin(wx*0.012 - now*1.4) * 17) * a;
+}
+function updateTrip(dt){ if (tripT > 0) tripT = Math.max(0, tripT - dt); }
+
+function drawMushroom(x, gy, s, hz){
+  const cap = haze([214,58,52], hz), capD = haze([170,38,36], hz);
+  const stem = haze([246,240,224], hz), spot = haze([252,248,238], hz);
+  poly([[x-3.4*s, gy],[x+3.4*s, gy],[x+2.6*s, gy-9*s],[x-2.6*s, gy-9*s]], stem);
+  ctx.fillStyle = cap;
+  ctx.beginPath(); ctx.ellipse(x, gy-9*s, 9*s, 7*s, 0, Math.PI, 0); ctx.fill();
+  ctx.fillStyle = capD;
+  ctx.beginPath(); ctx.ellipse(x, gy-9*s, 9*s, 1.8*s, 0, 0, Math.PI); ctx.fill();
+  ctx.fillStyle = spot;
+  for (const [ox, oy, r] of [[-4.6,-11.4,1.9],[1.2,-13.2,2.2],[5.4,-10.4,1.6],[-1.4,-9.9,1.3]]){
+    ctx.beginPath(); ctx.arc(x+ox*s, gy+oy*s, r*s, 0, TAU); ctx.fill();
   }
 }
 
@@ -1476,6 +1955,8 @@ function release(){ input.held=false; }
 function panelOpen(){ return !el('board').classList.contains('hidden'); }
 
 window.addEventListener('keydown', e=>{
+  // 'b' for background. Deliberately undocumented: nothing on screen mentions it.
+  if (e.code==='KeyB' && document.activeElement!==el('pname')){ cycleScene(); return; }
   if (e.code==='Space' || e.code==='ArrowUp'){
     if (document.activeElement===el('pname')) return;
     e.preventDefault(); if (!e.repeat) press();
@@ -1520,12 +2001,14 @@ function jumpArc(x0, spd){
 
 function startRun(){
   musicStop();
-  camX = 0; rideX = 0; runTime = 0; score = 0; coins = 0; deathBits = [];
+  camX = 0; rideX = 0; runTime = 0; score = 0; coins = 0; deathBits = []; tripT = 0;
   fw.length = 0; bills.length = 0; winT = 0;
   rings.length = 0; puffs.length = 0; thrustT = 0;
   shield = 0; shieldFlash = 0;
   wx.cur = weatherAt(W*0.6); wx.prev = wx.cur; wx.t = 1; wx.dwell = 0;
+  scene = rollScene();            // a different backdrop every run, unasked
   spawnCourse(); resetPlayer();   // new obstacle/collectible layout every run
+  placePeacock();  // and a new hiding place for the bird
   state = 'countdown'; countdownT = 3; goT = 0; overShown=false;
   runStartTs = performance.now();
   el('start').classList.add('hidden');
@@ -1659,6 +2142,8 @@ function frame(ts){
   if (!W || !H){ resize(); if (W && H) resetPlayer(); }   // heal zero-size boot (hidden/background tab)
   const dt = Math.min(0.033, (ts-lastT)/1000 || 0.016);
   lastT = ts; now = ts/1000;
+  updateBirds(dt);
+  updateTrip(dt);
 
   if (state==='countdown'){
     const prev = Math.ceil(countdownT);
@@ -1722,6 +2207,11 @@ function checkCollisions(){
         return die(OB_LABEL[it.type]);
       }
       it.hit = true; score += it.val; coins++;
+      if (it.trip){
+        tripT = TRIP_SECS;
+        floaters.push({ x:W*PLAYER_SX+dx, y:iy-34, t:0, txt:'WOOOAH' });
+        sfx('shroom');
+      }
       if (it.shield){
         shield += 1;
         floaters.push({ x:W*PLAYER_SX+dx, y:iy-34, t:0, txt:'SHIELD UP' });
@@ -1805,19 +2295,28 @@ function render(){
 }
 
 function drawMountains(){
-  // two parallax layers sampled from the same (smoothed) chart
+  // Two parallax layers, each with a band of scenery planted on it. Order is far
+  // hill, far scenery, near hill, near scenery, so the near hill hides the far
+  // scenery behind it for free.
+  //
+  // Shape comes from the chart sampled at each layer's parallax (that is what
+  // makes them slide past at different rates). The BASELINE comes from the
+  // smoothed chart under the player, so the hills stay behind the ground instead
+  // of being swallowed by it whenever price is high.
   const mc = wmixCol('mount',null);
-  for (const [par, yBase, amp, tint] of [[0.18, H*0.72, H*0.20, 0.10],[0.42, H*0.78, H*0.28, 0]]){
-    ctx.fillStyle = rgbStr(rgbLerp(mc,[255,255,255],tint+0.08));
+  const t = terrain;
+  for (let bi=0; bi<BANDS.length; bi++){
+    const b = BANDS[bi];
+    // Distance still washes the far ridge toward the weather; the near field keeps
+    // most of its own colour so grass looks like grass.
+    ctx.fillStyle = rgbStr(rgbLerp(groundCol(b), mc, b.far ? 0.62 : 0.28));
     ctx.beginPath(); ctx.moveTo(0,H);
-    const step = 26;
-    for (let sx2=0; sx2<=W+step; sx2+=step){
-      const wx2 = (camX*par + sx2);
-      const i = Math.floor(wrapX(wx2*2.2)/SEG);
-      const v = terrain.norm[Math.min(i, terrain.norm.length-1)];
-      ctx.lineTo(sx2, yBase - v*amp);
-    }
+    const step = 13;
+    for (let sx2=0; sx2<=W+step; sx2+=step) ctx.lineTo(sx2, bandY(sx2, b));
     ctx.lineTo(W,H); ctx.closePath(); ctx.fill();
+    if (scene === 'forest' && b.far) drawTreeline(b);
+    drawScenery(bi);
+    if (bi === 0) drawBirds();   // over the far ridge, behind the near one
   }
 }
 
@@ -1927,6 +2426,7 @@ const FONT5x7 = {
   'U':[0x11,0x11,0x11,0x11,0x11,0x11,0x0E], 'V':[0x11,0x11,0x11,0x11,0x11,0x0A,0x04],
   'W':[0x11,0x11,0x11,0x15,0x15,0x1B,0x11], 'X':[0x11,0x11,0x0A,0x04,0x0A,0x11,0x11],
   'Y':[0x11,0x11,0x0A,0x04,0x04,0x04,0x04], 'Z':[0x1F,0x01,0x02,0x04,0x08,0x10,0x1F],
+  '+':[0x00,0x00,0x04,0x1F,0x04,0x00,0x00],
   '-':[0x00,0x00,0x00,0x1F,0x00,0x00,0x00], ',':[0x00,0x00,0x00,0x00,0x0C,0x04,0x08],
   '.':[0x00,0x00,0x00,0x00,0x00,0x0C,0x0C], '!':[0x04,0x04,0x04,0x04,0x04,0x00,0x04],
   ' ':[0,0,0,0,0,0,0],
@@ -2275,6 +2775,7 @@ async function boot(){
   if (!data || (BAKED.date > data.date)) data = BAKED;
   buildTerrain(data);
   spawnCourse();
+  placePeacock();
   resetPlayer();
   state = 'menu';
   refreshHiScore();
