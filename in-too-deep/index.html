@@ -2924,6 +2924,7 @@ function frame(ts){
     // The chart ends. Riding every day of it is the win, not a lap counter.
     if (camX + W*PLAYER_SX >= terrain.finishX) win();
     if (state==='playing') updatePlayer(dt);
+    if (state==='playing') updateSwimmers(dt);
     if (state==='playing') checkCollisions();
     updateWeather(dt);
     updateParticles(dt, spd);
@@ -2945,6 +2946,23 @@ function frame(ts){
   render();
 }
 
+// Sharks and whales are alive: as they come into range they swim forward (the
+// way they face, toward the player) and bob within a small vertical range. Both
+// it.x and it.dy feed drawing and collision alike, so animating them here keeps
+// the hitbox on the art. Only animated near the player, so off-screen creatures
+// stay put (cheaper, and they "come alive" as they approach).
+function updateSwimmers(dt){
+  const px = camX + W*PLAYER_SX;
+  for (const it of items){
+    if (it.type !== 'shark' && it.type !== 'whale') continue;
+    if (it.x < px - 320 || it.x > px + 1000) continue;
+    if (it.dy0 === undefined){ it.dy0 = it.dy; it.ph = it.x * 0.01; }
+    const shark = it.type === 'shark';
+    it.x -= (shark ? 60 : 40) * dt;                          // swim forward
+    it.dy = it.dy0 + Math.sin(now*(shark?2.1:1.5) + it.ph) * (shark ? 9 : 12);  // gentle up/down
+  }
+}
+
 function checkCollisions(){
   const px = camX + W*PLAYER_SX;
   const pyC = player.y - 13;                       // rocket body centre
@@ -2962,10 +2980,10 @@ function checkCollisions(){
     if (dx*dx+dy*dy < rr*rr){
       if (it.whale){
         // Hitting the whale is the point: it pumps you.
-        it.hit = true; score += 250; coins++;
-        floaters.push({ x:W*PLAYER_SX+dx, y:iy-46, t:0, txt:'WHALE PUMP +250' });
+        it.hit = true; score += 50; coins++;
+        floaters.push({ x:W*PLAYER_SX+dx, y:iy-46, t:0, txt:'WHALE PUMP +50' });
         sfx('whalesong');
-        track('collectible_picked_up', { type: 'whale', score_value: 250 });
+        track('collectible_picked_up', { type: 'whale', score_value: 50 });
         continue;
       }
       if (it.ob){
