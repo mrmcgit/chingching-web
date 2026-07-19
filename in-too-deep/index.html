@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Moonshot — Fly the real PLS chart | Ching Ching</title>
-<meta name="description" content="An origami rocket flight over the actual PLS price history. Dive for the pumps, dodge the sell walls and the SEC.">
-<meta property="og:title" content="Moonshot — Fly the real PLS chart">
-<meta property="og:description" content="An origami rocket game built from the actual PLS price history. Play free at chingching.xyz">
+<title>In Too Deep — Swim the real PLS chart | Ching Ching</title>
+<meta name="description" content="A tiny pufferfish over the actual PLS price history. Bump the whales, dodge the sharks, and never touch the seabed.">
+<meta property="og:title" content="In Too Deep — Swim the real PLS chart">
+<meta property="og:description" content="An underwater arcade game built from the actual PLS price history. Play free at chingching.xyz">
 <link rel="icon" type="image/svg+xml" href="/arcade/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/arcade/favicon-32.png">
 <link rel="apple-touch-icon" href="/arcade/apple-touch-icon.png">
@@ -148,18 +148,18 @@ h1 .accent { color:#E4572E; }
 <body>
 <canvas id="game"></canvas>
 <button id="muteBtn" class="iconbtn" title="Sound">&#128266;</button>
-<div id="tapStart" class="hidden">HOLD TO BOOST &middot; RELEASE TO DIVE</div>
+<div id="tapStart" class="hidden">TAP TO DART UP &middot; GRAVITY DOES THE REST</div>
 
 <!-- ===================== START ===================== -->
 <div id="start" class="panel">
-  <h1>MOON<span class="accent">SHOT</span></h1>
-  <div class="sub">Fly the <b>real PLS chart</b>. Every peak and dip is actual price history.</div>
+  <h1>IN TOO <span class="accent">DEEP</span></h1>
+  <div class="sub">Swim the <b>real PLS chart</b>. Every reef and trench is actual price history.</div>
   <canvas id="rocketPreview" width="300" height="170" style="width:150px;height:85px;margin:12px auto 0;display:block;"></canvas>
   <button id="playBtn" class="btn">PLAY</button>
   <div class="btn-row">
     <button id="boardBtn1" class="btn secondary">Leaderboard</button>
   </div>
-  <div class="hint" id="startHint"><b>Hold</b> <span class="kbd">SPACE</span> / hold tap to boost &middot; release to dive<br>pumps sit low &middot; the <b>PulseChain tablet</b> blocks one hit &middot; touch the chart = rekt</div>
+  <div class="hint" id="startHint"><span class="kbd">SPACE</span> / tap to dart upward &middot; you sink when you don't<br><b>whales are good</b>, sharks are not &middot; the <b>nautilus</b> puffs you up to block one hit &middot; the seabed = rekt</div>
   <div class="hint" id="bestLine"></div>
   <div id="otherStart" class="others"></div>
 </div>
@@ -171,7 +171,7 @@ h1 .accent { color:#E4572E; }
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
   <div class="statrow">
-    <span><b id="statDist">0</b>days flown</span>
+    <span><b id="statDist">0</b>days swum</span>
     <span><b id="statCoins">0</b>collected</span>
     <span><b id="statBest">0</b>best</span>
   </div>
@@ -224,13 +224,13 @@ h1 .accent { color:#E4572E; }
 <script>
 'use strict';
 /* =====================================================================
-   MOONSHOT — an origami rocket flight over the real PLS price chart.
+   IN TOO DEEP — a tiny pufferfish over the real PLS price chart.
    Single file, vanilla JS + Canvas 2D. Part of Ching Ching (chingching.xyz).
    ===================================================================== */
 
 /* ---------------- config ---------------- */
 const API = 'https://pnj.chingching.xyz';
-const GAME = 'moonshot';        // slug shared by scores, events, and the leaderboard
+const GAME = 'in-too-deep';     // slug shared by scores, events, and the leaderboard
 const SEG = 90;              // world px per daily price point
 const DENSE = 4;             // heightmap sample step
 const BRIDGE = 10;           // interpolated points joining last day back to first
@@ -241,6 +241,13 @@ const GRAVITY = 2300;
 // hardest part for everyone — a player who dawdles cannot arrive at the finale
 // going slower than a player who did not.
 const BASE_SPEED = 265, RAMP = 6.5, MAX_SPEED = 620;
+// Swim feel. A tap is an impulse, not a thrust: DART_V is everything you get,
+// then SINK_G pulls you down through water thick enough (DRAG) that neither
+// direction ever reaches rocket speeds. Tuned from a desk, so expect retuning.
+const DART_V = -400;           // px/s upward per tap
+const SINK_G = 900;            // px/s^2 downward, well under the rocket's 1600
+const DRAG   = 1.6;            // 1/s exponential water resistance
+const VY_MAX = 460;            // terminal sink; darts also clamp here
 const END_SPEED = 1500;        // flat out, at the Peg Flag
 const SURGE_FROM = 0.45;       // fraction of the chart ridden before the surge starts
 const WIN_BONUS = 5000;      // finishing the whole chart should top the board
@@ -435,37 +442,42 @@ function wmixCol(key,idx){ const T = wxTable(); return rgbLerp(T[wx.prev][key][i
 /* particles: rain / snow / motes, all little paper bits */
 const parts = [];
 function updateParticles(dt, speed){
+  // Underwater the two channels are bubbles (rise) and silt (sinks).
   const rain = wmix('rain'), snow = wmix('snow');
-  const want = Math.round(rain*90 + snow*70);
+  const want = Math.round(rain*70 + snow*60);
   while (parts.length < want) parts.push(newPart(rain>snow));
   while (parts.length > want) parts.pop();
   for (const p of parts){
     p.x -= (p.vx + speed*p.par)*dt; p.y += p.vy*dt; p.rot += p.vr*dt;
-    if (p.y > H+10 || p.x < -20){ Object.assign(p, newPart(rain>snow)); p.y = -10; }
+    if (p.rain) p.x += Math.sin(now*2 + p.y*0.02)*22*dt;          // bubbles wander
+    if (p.y > H+10 || p.y < -12 || p.x < -20){
+      Object.assign(p, newPart(rain>snow));
+      p.y = p.rain ? H+8 : -10;                                    // bubbles start low, silt starts high
+    }
   }
 }
 function newPart(isRain){
   return isRain
-    ? { rain:true, x:Math.random()*(W+100), y:Math.random()*H, vx:120, vy:620+Math.random()*160, vr:0, rot:0, par:0.55, l:10+Math.random()*7 }
-    : { rain:false, x:Math.random()*(W+100), y:Math.random()*H, vx:20+Math.random()*30, vy:55+Math.random()*45, vr:2+Math.random()*3, rot:Math.random()*TAU, par:0.3, s:2.5+Math.random()*2.5 };
+    ? { rain:true, x:Math.random()*(W+100), y:Math.random()*H, vx:14, vy:-(55+Math.random()*90), vr:0, rot:0, par:0.5, s:1.4+Math.random()*2.2 }
+    : { rain:false, x:Math.random()*(W+100), y:Math.random()*H, vx:16+Math.random()*24, vy:26+Math.random()*24, vr:2+Math.random()*3, rot:Math.random()*TAU, par:0.3, s:1.6+Math.random()*1.8 };
 }
 function drawParticles(){
   const rainT = wmix('rain');
   ctx.save();
   for (const p of parts){
     if (p.rain){
-      // On the moon these streaks are meteors, and the rain colour is a blue-grey
-      // that simply disappears against a night sky.
-      ctx.strokeStyle = scene === 'space'
-        ? `rgba(255,214,150,${0.75*Math.min(rainT,1)})`
-        : `rgba(120,134,160,${0.35*Math.min(rainT,1)})`;
-      ctx.lineWidth = scene === 'space' ? 1.8 : 1.4;
-      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+4, p.y+p.l); ctx.stroke();
+      // a rising bubble: ring + a pinprick highlight
+      const a = 0.5*Math.min(rainT,1);
+      ctx.strokeStyle = `rgba(214,236,246,${a})`;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.s, 0, TAU); ctx.stroke();
+      ctx.fillStyle = `rgba(255,255,255,${a*0.9})`;
+      ctx.fillRect(p.x - p.s*0.4, p.y - p.s*0.5, 1, 1);
     } else {
       ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillStyle = 'rgba(222,208,178,0.7)';
       ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s);
-      ctx.fillStyle = 'rgba(205,214,228,0.7)';
+      ctx.fillStyle = 'rgba(180,168,140,0.55)';
       ctx.fillRect(-p.s/2,-p.s/2,p.s/2,p.s);
       ctx.restore();
     }
@@ -498,8 +510,8 @@ function softShadow(x, y, w){
    COURSE — obstacles & collectibles, seeded from the terrain date
    ===================================================================== */
 let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
-const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD', bomb:'a Bomb',
-                   wall:'a Sell Wall', sec:'the SEC', notice:'an Interpol Red Notice' };
+const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD Ink', bomb:'a Sea Mine',
+                   wall:'a Fishing Line', sec:'the SEC', notice:'an Interpol Red Notice', shark:'a Shark' };
 
 
 // ---------------------------------------------------------------- the run to the Peg Flag
@@ -549,21 +561,26 @@ function spawnCourse(){
         items.push({ type:'sandwich', x, dy:62 + rng()*70, r:17, val:30 });
       } else if (k < 0.94){
         items.push({ type:'diamond', x, dy:148, r:17, val:50 });
+      } else if (k < 0.955){
+        // marketing pumps your bag out here too, but it does not armour you
+        items.push({ type:'tablet', x, dy:70 + rng()*80, r:19, val:50 });
       } else if (k < 0.985){
-        // rarest pickup on the course: it cancels a death
-        items.push({ type:'tablet', x, dy:70 + rng()*80, r:19, val:25, shield:true });
+        // the shield: grab it and the puffer puffs, blocking one hit
+        items.push({ type:'nautilus', x, dy:60 + rng()*80, r:17, val:25, shield:true });
       } else {
         // rarer still, and the only thing in the game that changes how it looks
-        items.push({ type:'mushroom', x, dy:54 + rng()*90, r:17, val:100, trip:true });
+        items.push({ type:'nudibranch', x, dy:54 + rng()*90, r:17, val:100, trip:true });
       }
     } else {                                        // obstacles
       const k = rng();
-      if (k < 0.22)      items.push({ type:'rock',    x, dy:16, r:19, ob:true });
-      else if (k < 0.42) items.push({ type:'rcandle', x, dy:30, r:18, ob:true });
-      else if (k < 0.60) items.push({ type:'cloud',   x, dy:118, r:24, ob:true });
-      else if (k < 0.74) items.push({ type:'bomb',    x, dy:15, r:16, ob:true });
-      else if (k < 0.87) items.push({ type:'sec',     x, dy:130 + rng()*60, r:21, ob:true });
-      else               items.push({ type:'notice',  x, dy:75 + rng()*50,  r:19, ob:true });
+      if (k < 0.15)      items.push({ type:'rock',    x, dy:16, r:19, ob:true });
+      else if (k < 0.29) items.push({ type:'rcandle', x, dy:30, r:18, ob:true });
+      else if (k < 0.43) items.push({ type:'cloud',   x, dy:118, r:24, ob:true });
+      else if (k < 0.55) items.push({ type:'bomb',    x, dy:15, r:16, ob:true });
+      else if (k < 0.65) items.push({ type:'sec',     x, dy:130 + rng()*60, r:21, ob:true });
+      else if (k < 0.75) items.push({ type:'notice',  x, dy:75 + rng()*50,  r:19, ob:true });
+      else if (k < 0.90) items.push({ type:'shark',   x, dy:60 + rng()*110, r:26, ob:true });      // the headliner
+      else               items.push({ type:'whale',   x, dy:100 + rng()*80, r:40, whale:true });   // the good collision
     }
     x += 270 + rng()*330;
   }
@@ -591,22 +608,50 @@ function wallBottom(it){ return 34 + (groundY(it.x) - 34) * it.frac; }
 function drawItem(it, sx){
   const y = it.type==='wall' ? 0 : groundY(it.x) - it.dy;
   ctx.save(); ctx.translate(sx, y);
+  if (it.type==='sec' || it.type==='notice' || it.type==='tablet')
+    drawBubbleWrap(it.type==='tablet' ? 26 : 29, it.x*0.013);
   switch(it.type){
+    case 'whale': drawWhale(now + it.x*0.01); break;
+    case 'shark': drawShark(now + it.x*0.01); break;
+    // Reef reskins: same internal types as the other games so analytics stay
+    // comparable; these cases shadow the paper originals lower in the switch.
+    case 'cloud': drawSquidInk(it.x*0.01); break;
+    case 'bomb': drawMine(it.x*0.01); break;
+    case 'nautilus': drawNautilus(0, 14, 1.15, 0); break;
     case 'wall': {
+      // A trawler: a paper boat on the waterline with hooked lines reaching
+      // down to wallBottom. Same geometry and collision as the sell wall it
+      // replaces; the fiction finally fits a fish.
       const w = it.w, b = wallBottom(it);
-      poly([[-w/2,0],[w/2,0],[w/2,b],[0,b+14],[-w/2,b]], '#C0392B');
-      poly([[0,0],[w/2,0],[w/2,b],[0,b+14]], shade('#C0392B',-0.18));
-      // brick creases
-      ctx.strokeStyle='rgba(58,54,48,0.25)'; ctx.lineWidth=1;
-      for (let yy=22; yy<b-6; yy+=24){
-        ctx.beginPath(); ctx.moveTo(-w/2,yy); ctx.lineTo(w/2,yy); ctx.stroke();
-      }
-      ctx.fillStyle='#FBF8F1';
-      ctx.font='900 11px -apple-system, sans-serif';
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.save(); ctx.translate(0, b*0.45); ctx.rotate(-Math.PI/2);
-      ctx.fillText('SELL', 0, 0);
+      const rock = Math.sin(now*1.3 + it.x*0.02)*0.05;
+      const sway = Math.sin(now*1.0 + it.x*0.02)*6;
+      // the boat, riding the surface
+      ctx.save();
+      ctx.translate(0, 8); ctx.rotate(rock);
+      poly([[-w/2-14, 0],[w/2+14, 0],[w/2+7, 9],[-w/2-7, 9]], '#C8503A');
+      poly([[-w/2-14, 0],[w/2+14, 0],[w/2+11, -4],[-w/2-11, -4]], '#E0DAC8');
+      poly([[-6, -4],[8, -4],[8, -13],[-6, -13]], '#F6F1E5');            // wheelhouse
+      poly([[-3, -13],[1, -13],[1, -18],[-3, -18]], '#8B8F94');          // stack
       ctx.restore();
+      // waterline ripples
+      ctx.strokeStyle = 'rgba(230,244,250,0.5)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.ellipse(0, 12, w/2+18, 4, 0, 0, TAU); ctx.stroke();
+      // three hooked lines trawling below
+      for (const ox of [-w/2+3, 0, w/2-3]){
+        const lx = ox + sway*(0.4 + Math.abs(ox)/(w));
+        ctx.strokeStyle = 'rgba(90,96,104,0.85)'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(ox, 14);
+        ctx.quadraticCurveTo(ox + sway*0.5, b*0.55, lx, b);
+        ctx.stroke();
+        // the hook: a J with a barb, and a sad little worm on the middle one
+        ctx.strokeStyle = '#B9C0C8'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(lx + 3, b + 4, 5, Math.PI*0.15, Math.PI*1.05, false); ctx.stroke();
+        if (ox === 0){
+          ctx.strokeStyle = '#D98A9E'; ctx.lineWidth = 2.4; ctx.lineCap='round';
+          ctx.beginPath(); ctx.moveTo(lx - 1, b + 8);
+          ctx.quadraticCurveTo(lx + 3, b + 12, lx + 6, b + 8); ctx.stroke();
+        }
+      }
       break;
     }
     case 'sec': {
@@ -751,11 +796,10 @@ function drawItem(it, sx){
       }
       break;
     }
-    case 'mushroom': {
+    case 'nudibranch': {
       const bob = Math.sin(now*2.2 + it.x*0.4)*4;
       ctx.translate(0, bob);
-      ctx.rotate(Math.sin(now*1.5 + it.x)*0.10);
-      drawMushroom(0, 9, 1.5, 0);
+      drawNudibranch(0, 9, 1.35, 0);
       break;
     }
     case 'sandwich': {
@@ -864,9 +908,9 @@ function candle(col, w, h, evil){
    CHARACTERS — five origami variants with pluggable controllers
    ===================================================================== */
 const VARIANTS = {
-  rocket: { name:'Rocket', desc:'Hold to boost. Touch the chart = rekt.', ctrl:'rocket' },
+  fish: { name:'Pufferfish', desc:'Tap to dart. The seabed = rekt.', ctrl:'fish' },
 };
-const variantKey = 'rocket';
+const variantKey = 'fish';
 
 const player = { y:0, vy:0, grounded:false, angle:0, spd:0, anim:0 };
 
@@ -882,38 +926,23 @@ function updatePlayer(dt){
   const px = camX + W*PLAYER_SX;
   const gy = groundY(px);
   player.anim += dt;
-  // hold = thrust up, release = dive. Touching the chart ends the run.
-  if (input.held) player.vy -= 3600*dt; else player.vy += 1600*dt;
-  player.vy = clamp(player.vy, -480, 640);
+  // Tap = one dart upward; between taps you sink. Water drag keeps both
+  // directions slow, which is the whole feel: floaty, never ballistic.
+  if (input.pressed){ player.vy = DART_V; }   // emitThrust supplies the blub
+  player.vy += SINK_G*dt;
+  player.vy *= Math.max(0, 1 - DRAG*dt);
+  player.vy = clamp(player.vy, DART_V, VY_MAX);
   player.y += player.vy*dt;
-  if (player.y < 34){ player.y = 34; player.vy = Math.max(player.vy,0); }
-  if (player.y >= gy - 8) return die('the chart');
+  if (player.y < 34){ player.y = 34; player.vy = Math.max(player.vy,0); }   // the surface
+  if (player.y >= gy - 8) return die('the seabed');
   return null;
 }
 
-/* ---- rocket art (local frame: origin at base, facing +x) ---- */
+/* ---- pufferfish art (local frame: origin at centre, facing +x) ---- */
 function drawCharacter(key, t, grounded, vy, angle, forCard){
-  const A='#E4572E';
   ctx.save();
-  ctx.rotate((angle||0) + 0.15 + (vy||0)*0.0006);
-  // flame while boosting
-  if (input.held && state==='playing' && !forCard){
-    const f = Math.random();
-    poly([[-16,-10],[-30-f*10,-13],[-16,-16]], '#FFB627');
-    poly([[-16,-11],[-24-f*6,-13],[-16,-15]], '#E4572E');
-  } else if (forCard){
-    poly([[-16,-10],[-28,-13],[-16,-16]], '#FFB627');
-  }
-  // body
-  poly([[-16,-6],[8,-6],[18,-13],[8,-20],[-16,-20]], '#F0EDE4', 'rgba(58,54,48,0.3)');
-  poly([[-16,-6],[8,-6],[8,-13],[-16,-13]], shade('#F0EDE4',-0.1));
-  poly([[8,-6],[18,-13],[8,-20],[8,-6]], A);        // nose
-  poly([[-16,-6],[-8,-6],[-14,2],[-20,2]], A);       // fin low
-  poly([[-16,-20],[-8,-20],[-14,-28],[-20,-28]], shade(A,-0.15)); // fin high
-  ctx.fillStyle='#7FB4D9';
-  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.fill();
-  ctx.strokeStyle=shade('#F0EDE4',-0.25); ctx.lineWidth=1;
-  ctx.beginPath(); ctx.arc(-1,-13,3.6,0,TAU); ctx.stroke();
+  ctx.rotate(angle || 0);
+  drawFishCharacter(t, forCard ? 0 : vy, shield > 0, forCard ? 0 : puffK);
   ctx.restore();
 }
 
@@ -922,26 +951,27 @@ function drawCharacter(key, t, grounded, vy, angle, forCard){
    PULSE THRUST — every press fires a PulseChain-gradient burst out the back
    ===================================================================== */
 const PLS_HUES = ['#FF2E9A', '#C246E0', '#9B5CFF', '#7FB0FF'];
-let thrustT = 0;              // burst timer, drives the flame
+let thrustT = 0;
+let puffK = 0;                 // 0 deflated .. 1 fully puffed; chases shield state              // burst timer, drives the flame
 const rings = [];             // expanding pulse rings
 const puffs = [];             // gradient exhaust motes
 
 function emitThrust(){
-  thrustT = 0.34;
-  rings.push({ t:0, x:W*PLAYER_SX - 14, y:0 });   // y resolved at draw time (player moves)
-  for (let i=0;i<8;i++){
+  // A dart sheds a few bubbles behind the tail. They kick backward, then rise,
+  // because bubbles rise; nothing about this should remember being a rocket.
+  thrustT = 0.2;
+  for (let i=0;i<5;i++){
     puffs.push({
-      x: W*PLAYER_SX - 16 + (Math.random()-0.5)*5,
-      y: player.y - 13 + (Math.random()-0.5)*7,
-      vx: -(90 + Math.random()*170),
-      vy: (Math.random()-0.5)*80,
-      t: 0, life: 0.3 + Math.random()*0.3,
-      col: PLS_HUES[Math.floor(Math.random()*PLS_HUES.length)],
-      s: 2.5 + Math.random()*4,
-      rot: Math.random()*TAU, vr: (Math.random()-0.5)*10,
+      x: W*PLAYER_SX - 15 + (Math.random()-0.5)*6,
+      y: player.y - 13 + (Math.random()-0.5)*8,
+      vx: -(40 + Math.random()*80),
+      vy: -(15 + Math.random()*55),
+      t: 0, life: 0.45 + Math.random()*0.4,
+      s: 1.4 + Math.random()*2.2,
+      rot: 0, vr: 0,
     });
   }
-  sfx('peww');
+  sfx('blub');
 }
 
 function updateThrust(dt, spd){
@@ -962,15 +992,14 @@ function updateThrust(dt, spd){
 }
 
 function drawThrust(){
-  // exhaust motes (paper confetti in PulseChain colours)
+  // dart bubbles
   for (const p of puffs){
     const k = 1 - p.t/p.life;
     ctx.save();
-    ctx.globalAlpha = k*0.85;
-    ctx.translate(p.x, p.y); ctx.rotate(p.rot);
-    ctx.fillStyle = p.col;
-    const s = p.s*(0.5+k*0.5);
-    ctx.fillRect(-s/2,-s/2,s,s*0.75);
+    ctx.globalAlpha = k*0.7;
+    ctx.strokeStyle = 'rgba(220,240,248,0.9)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.s*(0.6+k*0.4), 0, TAU); ctx.stroke();
     ctx.restore();
   }
   // pulse rings
@@ -1012,10 +1041,11 @@ let shield = 0;          // hits absorbed in reserve
 let shieldFlash = 0;     // burst timer when one is spent
 
 function drawShield(){
-  if (shield <= 0 && shieldFlash <= 0) return;
+  // The puffed fish is the shield indicator; this only draws the block flash.
+  if (shieldFlash <= 0) return;
   const sx = W*PLAYER_SX, sy = player.y - 14;
   ctx.save();
-  if (shield > 0){
+  if (false){
     const pulse = 1 + Math.sin(now*4)*0.05;
     const g = ctx.createLinearGradient(sx-30, sy-30, sx+30, sy+30);
     g.addColorStop(0,'#FF2E9A'); g.addColorStop(0.5,'#9B5CFF'); g.addColorStop(1,'#7FB0FF');
@@ -1039,6 +1069,17 @@ function drawShield(){
    AUDIO — WebAudio-synthesized paper foley, no files
    ===================================================================== */
 let AC=null, sharedNoise=null, muted = localStorage.getItem('pnj_mute')==='1';
+/// Everything underwater goes through one lowpass: the whole mix is muffled,
+/// which is most of what "underwater" sounds like.
+function sink(a){
+  if (!a._muffle){
+    const f = a.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 1500; f.Q.value = 0.4;
+    f.connect(a.destination);
+    a._muffle = f;
+  }
+  return a._muffle;
+}
 function audio(){
   if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} }
   if (AC && AC.state==='suspended') AC.resume();
@@ -1054,7 +1095,7 @@ function sfx(name){
   if (muted) return;
   const ac = audio(); if(!ac) return;
   const t0 = ac.currentTime;
-  const g = ac.createGain(); g.connect(ac.destination);
+  const g = ac.createGain(); g.connect(sink(ac));
   const noise = (dur, type, f0, f1, vol)=>{
     const src = ac.createBufferSource(); src.buffer = sharedNoise;
     const flt = ac.createBiquadFilter(); flt.type=type;
@@ -1065,7 +1106,7 @@ function sfx(name){
   };
   const ping = (f, dur, vol, delay=0)=>{
     const o = ac.createOscillator(); o.type='triangle'; o.frequency.value=f;
-    const og = ac.createGain(); o.connect(og); og.connect(ac.destination);
+    const og = ac.createGain(); o.connect(og); og.connect(sink(ac));
     og.gain.setValueAtTime(0.0001,t0+delay);
     og.gain.exponentialRampToValueAtTime(vol,t0+delay+0.012);
     og.gain.exponentialRampToValueAtTime(0.001,t0+delay+dur);
@@ -1080,23 +1121,25 @@ function sfx(name){
       noise(0.55,'lowpass',1400,120,0.7);                                      // crumple
       const o = ac.createOscillator(); o.type='sawtooth';
       o.frequency.setValueAtTime(190,t0); o.frequency.exponentialRampToValueAtTime(46,t0+0.4);
-      const og=ac.createGain(); o.connect(og); og.connect(ac.destination);
+      const og=ac.createGain(); o.connect(og); og.connect(sink(ac));
       og.gain.setValueAtTime(0.22,t0); og.gain.exponentialRampToValueAtTime(0.001,t0+0.45);
       o.start(t0); o.stop(t0+0.5);
       ping(392,0.3,0.15,0.5); ping(311,0.3,0.15,0.68); ping(233,0.5,0.15,0.86); // sad jingle
       break;
     }
     case 'shroom': { ping(220,0.5,0.06); ping(330,0.5,0.055,0.08); ping(440,0.6,0.05,0.16); ping(660,0.7,0.045,0.24); break; }
+    case 'whalesong': ping(110, 0.9, 0.09); ping(147, 0.9, 0.07, 0.25); ping(98, 1.1, 0.06, 0.55); break;
     case 'firework': noise(0.5,'highpass',900,240,0.10); ping(880+Math.random()*500, 0.5, 0.05, 0.02); break;
     case 'thunder': noise(1.1,'lowpass',300,60,0.15); break;   // background weather, not a jump-scare
     case 'click':   noise(0.04,'bandpass',1400,1000,0.2); break;
     case 'shieldUp': { ping(660,0.16,0.18); ping(990,0.22,0.2,0.08); ping(1320,0.3,0.18,0.16); break; }
     case 'block':    { noise(0.18,'bandpass',1800,500,0.5); ping(440,0.24,0.2); break; }
+    case 'blub': noise(0.09,'lowpass',520,160,0.34); break;
     case 'peww': {   // deliberately quiet: it fires on every press
       const o = ac.createOscillator(); o.type='sine';
       o.frequency.setValueAtTime(880, t0);
       o.frequency.exponentialRampToValueAtTime(240, t0+0.13);
-      const og = ac.createGain(); o.connect(og); og.connect(ac.destination);
+      const og = ac.createGain(); o.connect(og); og.connect(sink(ac));
       og.gain.setValueAtTime(0.0001, t0);
       og.gain.exponentialRampToValueAtTime(0.045, t0+0.012);
       og.gain.exponentialRampToValueAtTime(0.0001, t0+0.15);
@@ -1136,7 +1179,7 @@ function musNote(semi, when, dur, type, vol){
   g.gain.setValueAtTime(0.0001, when);
   g.gain.exponentialRampToValueAtTime(vol, when + 0.012);
   g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
-  o.connect(g); g.connect(AC.destination);
+  o.connect(g); g.connect(sink(AC));
   o.start(when); o.stop(when + dur + 0.02);
 }
 
@@ -1177,20 +1220,17 @@ function drawFlagpole(sx, t){
   ctx.save();
   ctx.translate(sx, gy);
 
-  // ---- base block ----
-  poly([[-30,0],[30,0],[24,-20],[-24,-20]], '#E7E0D2');
-  poly([[-24,-20],[24,-20],[19,-30],[-19,-30]], '#D5CCBA');
-  poly([[-19,-30],[19,-30],[19,-27],[-19,-27]], '#C3B9A4');
+  // ---- base: a rock pile mooring on the seabed ----
+  drawMoonRock(0, 2, 1.1, 0);
+  drawMoonRock(15, 4, 0.7, 0);
+  drawMoonRock(-14, 4, 0.6, 0);
 
   // ---- pole ----
   poly([[-3.5,-30],[3.5,-30],[3.5,-POLE_H],[-3.5,-POLE_H]], POLE_COL);
   poly([[-3.5,-30],[-1.2,-30],[-1.2,-POLE_H],[-3.5,-POLE_H]], POLE_HI);   // fold highlight
 
-  // ---- ball on top ----
-  ctx.fillStyle = BALL_COL;
-  ctx.beginPath(); ctx.arc(0, -POLE_H-8, 9, 0, TAU); ctx.fill();
-  ctx.fillStyle = POLE_HI;
-  ctx.beginPath(); ctx.arc(-3, -POLE_H-11, 3, 0, TAU); ctx.fill();
+  // ---- the buoy rides the top of the pole, at the surface ----
+  drawBuoy(0, -POLE_H + 12, 0.85, 0);
 
   // ---- flag ----
   // Waiting at the top, or sliding down once the run is won. Eased so it drops
@@ -1302,8 +1342,8 @@ function victoryTune(){
 /// get what you get; 'b' cycles it for anyone who finds out, and nothing on screen
 /// says so. Moonshot's pool is the moon alone: its whole setting is that it is on
 /// the moon, which a random meadow would rather undo.
-const SCENES = ['space', 'meadow', 'forest', 'tropical'];
-const SCENE_POOL = GAME === 'pump-and-jump' ? ['forest', 'meadow', 'tropical'] : ['space'];
+const SCENES = ['reef', 'meadow', 'forest', 'tropical'];
+const SCENE_POOL = GAME === 'pump-and-jump' ? ['forest', 'meadow', 'tropical'] : ['reef'];
 function rollScene(){ return SCENE_POOL[(Math.random()*SCENE_POOL.length)|0]; }
 let scene = rollScene();
 function cycleScene(){ scene = SCENES[(SCENES.indexOf(scene) + 1) % SCENES.length]; }
@@ -1353,7 +1393,7 @@ function haze(rgb, t){ return rgbStr(rgbLerp(rgb, wmixCol('mount', null), t)); }
 /// theme. Weather still has a say below, but it no longer gets to decide: a storm
 /// should mute the grass, not turn it to slate.
 const SCENE_GROUND = {
-  space:    { near:[96,93,104],   far:[68,66,80] },
+  reef:     { near:[184,164,122], far:[128,124,108] },
   meadow:   { near:[122,164,88],  far:[146,166,132] },
   forest:   { near:[84,116,74],   far:[104,128,106] },
   tropical: { near:[146,172,102], far:[158,174,140] },
@@ -1553,10 +1593,12 @@ function drawHut(x, gy, s, hz){
 /// where it would be on screen at the start line.
 let peacockX = 0, peacockSlot = -1;
 function placePeacock(){
+  // The crab appears at most once, and always near the end: it is the
+  // "nearly there" beat, so the slot window is the last stretch of the chart.
   const f = FIELD[LANDMARK_LAYER];
   const span = terrain.finishX * f.par;
-  const kMin = Math.ceil((W*1.6) / f.slot);
-  const kMax = Math.floor(Math.max(kMin + 1, (span - W*1.5) / f.slot));
+  const kMin = Math.ceil((span*0.82) / f.slot);
+  const kMax = Math.floor(Math.max(kMin + 1, (span*0.97) / f.slot));
   peacockSlot = kMin + Math.floor(Math.random() * Math.max(1, kMax - kMin));
   peacockX = peacockSlot*f.slot + h01(peacockSlot*13 + LANDMARK_LAYER*7)*f.slot*0.7;
 }
@@ -1590,13 +1632,20 @@ function drawPeacock(x, gy, s, hz){
 /// One prop, wherever it happens to stand. Split out of drawScenery so the far
 /// ridge and the field can both use it without knowing about each other.
 function drawProp(r, sx, gy, s, hz, k){
-  if (scene === 'space'){
-    if (r < 0.030/FIELD_N) drawAlien(sx, gy, s*1.3, hz, h01(k*5) < 0.5);
-    else if (r < 0.38) drawCrater(sx, gy, s, hz);
+  if (scene === 'reef'){
+    // Wildlife first and rarest, divided by the layer count so the field does
+    // not multiply the odds (the lesson the bears taught).
+    if (r < 0.018/FIELD_N) drawTurtle(sx, gy, s*1.2, hz, h01(k*5) < 0.5);
+    else if (r < 0.036/FIELD_N) drawOctopus(sx, gy, s*1.1, hz);
+    else if (r < 0.054/FIELD_N) drawSeahorse(sx, gy, s*1.2, hz, h01(k*7) < 0.5);
+    else if (r < 0.054/FIELD_N + 0.016/FIELD_N) drawLamboWreck(sx, gy, s, hz);  // wen lambo: down here
+    else if (r < 0.34) drawKelp(sx, gy, s, hz, k);
+    else if (r < 0.58) drawCoral(sx, gy, s, hz, k);
     else if (r < 0.74) drawMoonRock(sx, gy, s, hz);
-    else if (r < 0.74 + 0.035/FIELD_N) drawWreck(sx, gy, s*0.9, hz);   // rare: a wreck you meet often is just scenery
-    else if (r < 0.86) drawDish(sx, gy, s, hz);
-    else drawMoonRock(sx, gy, s*0.6, hz);
+    else if (r < 0.82) drawTreasure(sx, gy, s*0.9, hz);
+    else if (r < 0.88) drawAnchor(sx, gy, s*0.8, hz);
+    else if (r < 0.93) drawBottle(sx, gy, s, hz);
+    else drawKelp(sx, gy, s*0.7, hz, k*3);
   } else if (scene === 'meadow'){
     if (r < 0.30) drawCow(sx, gy, s, hz, h01(k*3) < 0.5);
     else if (r < 0.56) drawTree(sx, gy, s, hz);
@@ -1619,8 +1668,21 @@ function drawProp(r, sx, gy, s, hz, k){
     else drawPalm(sx, gy, s*0.7, hz, (h01(k*5)-0.5)*0.5);
   }
 }
+/// The Sommi crab: the real meme, not a paper redraw, because the joke IS the
+/// photo face. One per run, always in the final stretch (see placePeacock).
+const SOMMI = new Image();
+SOMMI.src = 'data:image/png;base64,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';
 function drawLandmark(sx, gy, s, hz){
-  if (scene === 'space') drawShip(sx, gy, s*1.15, hz); else drawPeacock(sx, gy, s, hz);
+  if (scene !== 'reef'){ drawPeacock(sx, gy, s, hz); return; }
+  if (!SOMMI.complete || !SOMMI.naturalWidth) return;
+  const w = 52*s, h = 52*s;
+  const hop = Math.abs(Math.sin(now*5))*3*s;          // a little scuttle
+  const lean = Math.sin(now*5)*0.06;
+  ctx.save();
+  ctx.translate(sx, gy - hop); ctx.rotate(lean);
+  ctx.globalAlpha = Math.max(0.35, 1 - hz*1.1);       // hazes with distance like everything else
+  ctx.drawImage(SOMMI, -w/2, -h, w, h);
+  ctx.restore();
 }
 
 /* =====================================================================
@@ -1699,17 +1761,19 @@ function drawScenery(bi){
    like changes. Same indices, same computeWeatherMap, same particles:
    rain streaks make perfectly good meteors, snow makes ice dust.
    ===================================================================== */
-const WEATHER_SPACE = [
-  { name:'clear',   sky:[[14,16,34],[34,30,56]], mount:[56,54,76], sun:1, rain:0,   snow:0, dark:0    },
-  { name:'meteors', sky:[[11,13,28],[27,24,46]], mount:[47,45,66], sun:0, rain:1,   snow:0, dark:0.08 },
-  { name:'ice',     sky:[[22,24,44],[42,40,66]], mount:[62,60,82], sun:0, rain:0,   snow:1, dark:0.04 },
-  { name:'flare',   sky:[[48,20,30],[84,36,44]], mount:[88,48,56], sun:0, rain:1.6, snow:0, dark:0.20 },
+// The four chart-driven states become depth moods. rain = rising bubbles,
+// snow = sinking silt, dark = how far from the sunlit shallows this feels.
+const WEATHER_REEF = [
+  { name:'sunlit',   sky:[[96,182,200],[24,96,132]],  mount:[52,120,146], sun:1, rain:0.5, snow:0,   dark:0    },
+  { name:'silty',    sky:[[118,148,142],[54,84,90]],  mount:[86,108,104], sun:0, rain:0.3, snow:1,   dark:0.06 },
+  { name:'plankton', sky:[[104,168,160],[38,104,110]],mount:[66,126,128], sun:0, rain:0.2, snow:1.4, dark:0.03 },
+  { name:'abyss',    sky:[[16,30,52],[6,14,30]],      mount:[30,48,72],   sun:0, rain:0.6, snow:0.4, dark:0.24 },
 ];
-function wxTable(){ return scene === 'space' ? WEATHER_SPACE : WEATHER; }
+function wxTable(){ return scene === 'reef' ? WEATHER_REEF : WEATHER; }
 
 /* ---- stars: their own, much slower parallax ---- */
 function drawStars(){
-  if (scene !== 'space' || !terrain) return;
+  if (scene !== 'reef' || !terrain) return;
   const par = 0.05, pitch = 46;
   const k0 = Math.floor(camX*par/pitch);
   ctx.fillStyle = '#FFFDF5';
@@ -1726,22 +1790,23 @@ function drawStars(){
   ctx.globalAlpha = 1;
 }
 
-/* ---- Earth, where the paper sun would be ---- */
-function drawEarth(a){
+/* ---- the sun, from below ---- */
+function drawSunRays(a){
+  // A soft disc high in the water and slanted god-rays under it. The rays are
+  // long translucent quads that sweep very slowly; light through water moves.
   ctx.save();
-  ctx.globalAlpha = a;
-  ctx.translate(W*0.80, H*0.105);
-  const r = 32;
-  ctx.fillStyle = '#2E5E9E'; ctx.beginPath(); ctx.arc(0,0,r,0,TAU); ctx.fill();
-  ctx.save(); ctx.beginPath(); ctx.arc(0,0,r,0,TAU); ctx.clip();
-  poly([[-26,-14],[-8,-20],[2,-8],[-12,-2],[-24,-4]], '#4C8C58');        // continents
-  poly([[4,4],[20,-2],[26,10],[10,18],[0,12]], '#4C8C58');
-  poly([[-18,14],[-6,10],[-2,20],[-14,22]], '#4C8C58');
-  ctx.fillStyle = 'rgba(255,255,255,0.20)';                               // cloud swirl
-  ctx.beginPath(); ctx.ellipse(-6, 6, 22, 6, -0.3, 0, TAU); ctx.fill();
-  ctx.fillStyle = 'rgba(10,14,30,0.42)';                                  // terminator
-  ctx.beginPath(); ctx.arc(14, 0, r, 0, TAU); ctx.fill();
-  ctx.restore();
+  ctx.globalAlpha = a*0.85;
+  ctx.fillStyle = 'rgba(255,244,214,0.55)';
+  ctx.beginPath(); ctx.arc(W*0.78, 26, 34, 0, TAU); ctx.fill();
+  ctx.fillStyle = 'rgba(255,248,224,0.28)';
+  ctx.beginPath(); ctx.arc(W*0.78, 26, 52, 0, TAU); ctx.fill();
+  for (let i=0;i<4;i++){
+    const sway = Math.sin(now*0.22 + i*1.9)*40;
+    const x0 = W*0.78 + (i-1.5)*46;
+    ctx.globalAlpha = a*(0.10 + 0.05*Math.sin(now*0.35 + i));
+    ctx.fillStyle = '#FFF6DC';
+    poly([[x0-14, 0],[x0+14, 0],[x0+90+sway, H*0.78],[x0+34+sway, H*0.78]], ctx.fillStyle);
+  }
   ctx.restore();
 }
 
@@ -1872,6 +1937,553 @@ function drawMushroom(x, gy, s, hz){
   }
 }
 
+/* ============================ UNDERWATER ART (cast) ============================ */
+function drawFishCharacter(t, vy, puffed, puffK){
+  // hero pufferfish, local frame, facing +x, no haze (plain rgb strings)
+  ctx.save();
+  ctx.rotate(Math.max(-0.5, Math.min(0.5, vy*0.0006)));
+  const rx = lerp(11, 17, puffK), ry = lerp(9, 16, puffK);
+  const gold = 'rgb(232,164,86)', fold = 'rgb(210,140,64)', belly = 'rgb(250,247,240)', dark = 'rgb(40,36,30)';
+  const tailWag = Math.sin(t*8)*0.35*(1-0.4*puffK);
+  ctx.save(); ctx.translate(-rx*0.92, 0); ctx.rotate(tailWag);
+  poly([[0,0],[-9,-6],[-9,6]], fold);
+  ctx.restore();
+  const finWag = Math.sin(t*8+1.4)*0.3;
+  ctx.save(); ctx.translate(-rx*0.1, ry*0.55); ctx.rotate(0.6+finWag);
+  poly([[0,0],[-6,5],[2,6]], fold);
+  ctx.restore();
+  ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,TAU); ctx.fillStyle = gold; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(rx*0.05, ry*0.45, rx*0.72, ry*0.5, 0, 0, TAU); ctx.fillStyle = belly; ctx.fill();
+  if (puffK > 0.03){
+    const n = 12, len = 4*puffK;
+    for (let i=0;i<n;i++){
+      const a = i/n*TAU, dx = Math.cos(a), dy = Math.sin(a);
+      const ex = dx*rx, ey = dy*ry, px = -dy, py = dx;
+      poly([[ex+px*1.5, ey+py*1.5],[ex+dx*len, ey+dy*len],[ex-px*1.5, ey-py*1.5]], fold);
+    }
+  }
+  const eyeX = rx*0.48, eyeY = -ry*0.2;
+  ctx.beginPath(); ctx.arc(eyeX, eyeY, 3.6, 0, TAU); ctx.fillStyle = 'rgb(255,255,255)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(eyeX+0.6, eyeY-0.3*puffK, 1.9, 0, TAU); ctx.fillStyle = dark; ctx.fill();
+  if (puffed && puffK > 0.15){
+    ctx.strokeStyle = `rgba(40,36,30,${0.6*puffK})`; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(eyeX-3, eyeY-5); ctx.lineTo(eyeX+3, eyeY-3.5); ctx.stroke();
+  }
+  ctx.beginPath(); ctx.arc(rx*0.98, ry*0.1, 1.3, 0, TAU); ctx.fillStyle = fold; ctx.fill();
+  ctx.restore();
+}
+
+function drawShark(bob){
+  // deadly obstacle, item frame, facing left toward the player, collision r~26
+  const body = haze([122,130,142], 0), dark = haze([80,86,96], 0), belly = haze([166,172,182], 0);
+  const black = 'rgb(20,20,24)', white = 'rgb(238,238,238)';
+  poly([[-32,0],[-20,-9],[6,-11],[24,-4],[24,4],[6,11],[-20,9]], body);
+  poly([[-20,9],[6,11],[24,4],[8,7],[-13,6]], belly);
+  poly([[-2,-11],[7,-25],[14,-11]], dark);
+  poly([[21,-3],[35,-15],[26,-2]], dark);
+  poly([[21,3],[32,11],[24,2]], dark);
+  ctx.strokeStyle = dark; ctx.lineWidth = 1.2;
+  for (const gx of [-15,-11,-7]){ ctx.beginPath(); ctx.moveTo(gx,-8); ctx.lineTo(gx-2,7); ctx.stroke(); }
+  ctx.fillStyle = black; ctx.beginPath(); ctx.arc(-25,-3,2,0,TAU); ctx.fill();
+  const gap = 4 + Math.abs(Math.sin(bob*0.6))*3;
+  const jaw = [[-30,3],[-14,3]];
+  for (let i=0;i<4;i++){ const x=-14 - i*4; jaw.push([x, 3+gap], [x-2, 3]); }
+  poly(jaw, black);
+  ctx.fillStyle = white;
+  for (let i=0;i<4;i++){ const x=-28+i*4; poly([[x,3],[x+2,3+gap*0.75],[x+4,3]], white); }
+}
+
+function drawWhale(t){
+  // friendly bonus, item frame, facing left, collision r~40, reads round and blue
+  const body = haze([64,110,168], 0), fold = haze([48,90,144], 0), belly = haze([196,214,232], 0);
+  const dark = 'rgb(30,40,60)';
+  poly([[-45,-2],[-39,-18],[-18,-27],[8,-25],[28,-15],[39,-3],[39,9],[26,19],[2,24],[-24,19],[-42,9]], body);
+  poly([[8,-25],[28,-15],[39,-3],[26,3],[2,-2],[-14,-14]], fold);
+  ctx.strokeStyle = belly; ctx.lineWidth = 2;
+  for (const dy of [10,15,19]){ ctx.beginPath(); ctx.moveTo(-38,dy-4); ctx.quadraticCurveTo(-10,dy+6,20,dy-2); ctx.stroke(); }
+  poly([[35,-6],[56,-20],[48,-2],[35,4]], body);
+  poly([[35,6],[54,22],[46,4],[35,-2]], body);
+  ctx.strokeStyle = dark; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.arc(-24,-6,4,0.15*TAU,0.45*TAU); ctx.stroke();
+  const rise = (t*30) % 26;
+  ctx.fillStyle = `rgba(220,238,250,${1-rise/26})`;
+  ctx.beginPath(); ctx.arc(-14, -27-rise, Math.max(0.5,3-rise*0.06), 0, TAU); ctx.fill();
+  ctx.beginPath(); ctx.arc(-11, -30-rise*1.2, Math.max(0.5,2-rise*0.05), 0, TAU); ctx.fill();
+}
+
+function drawNautilus(x, gy, s, hz){
+  // shield pickup, prop frame, ~26*s tall, gentle hover bob
+  const bob = Math.sin(now*2 + x*0.05) * 1.4*s;
+  const cream = haze([238,226,200], hz), rust = haze([186,84,58], hz), rustD = haze([150,64,44], hz);
+  const tent = haze([210,196,170], hz), eyeDark = haze([40,36,32], hz);
+  ctx.save(); ctx.translate(x, gy - 13*s + bob);
+  poly([[-9*s,6*s],[-11*s,-4*s],[-4*s,-11*s],[6*s,-9*s],[10*s,-1*s],[6*s,7*s],[-1*s,9*s]], cream);
+  ctx.strokeStyle = rust; ctx.lineWidth = 1.3*s;
+  ctx.beginPath(); ctx.arc(2*s,0, 7*s, 0.7*TAU, 1.5*TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(3*s,-0.5*s, 4.6*s, 0.7*TAU, 1.5*TAU); ctx.stroke();
+  ctx.beginPath(); ctx.arc(3.6*s,-0.8*s, 2.6*s, 0.7*TAU, 1.5*TAU); ctx.stroke();
+  ctx.fillStyle = rustD; ctx.beginPath(); ctx.arc(4*s,-1*s, 1.1*s, 0, TAU); ctx.fill();
+  poly([[-9*s,6*s],[-11*s,-4*s],[-9*s,-2*s],[-8*s,5*s]], tent);
+  ctx.strokeStyle = tent; ctx.lineWidth = 1.2*s;
+  for (const o of [-2,2,6]){ ctx.beginPath(); ctx.moveTo(-9*s, o*0.5*s); ctx.lineTo(-15*s, o*0.9*s); ctx.stroke(); }
+  ctx.fillStyle = 'rgb(255,255,255)'; ctx.beginPath(); ctx.arc(-8*s,0,1.6*s,0,TAU); ctx.fill();
+  ctx.fillStyle = eyeDark; ctx.beginPath(); ctx.arc(-7.6*s,0,0.9*s,0,TAU); ctx.fill();
+  ctx.restore();
+}
+
+function drawNudibranch(x, gy, s, hz){
+  // very rare psychedelic sea-slug collectible, prop frame, ~18*s tall
+  const sway = Math.sin(now*2.4 + x*0.08) * 2*s;
+  const body = haze([214,64,150], hz), bodyLit = haze([236,96,178], hz);
+  const cyan = haze([70,200,220], hz), orange = haze([236,132,54], hz), yellow = haze([250,224,70], hz);
+  ctx.save(); ctx.translate(x, gy - 6*s);
+  poly([[-10*s,2*s],[-6*s+sway*0.3,-4*s],[2*s+sway*0.4,-5*s],[9*s,-1*s],[8*s,3*s],[-2*s,4*s]], body);
+  poly([[-6*s+sway*0.3,-4*s],[2*s+sway*0.4,-5*s],[3*s,-2*s],[-4*s,-1.5*s]], bodyLit);
+  for (const o of [-1,1]){
+    ctx.strokeStyle = cyan; ctx.lineWidth = 1.4*s;
+    ctx.beginPath(); ctx.moveTo(7*s+o*1.5*s, -2*s); ctx.lineTo(9*s+o*2.2*s+sway*0.2, -8*s); ctx.stroke();
+    ctx.fillStyle = cyan; ctx.beginPath(); ctx.arc(9*s+o*2.2*s+sway*0.2, -8*s, 1*s, 0, TAU); ctx.fill();
+  }
+  for (const o of [-2,-0.5,1,2.5]){
+    ctx.save(); ctx.translate(-9*s, 0); ctx.rotate(0.15*o + sway*0.02);
+    poly([[0,0],[-1*s,-5*s-Math.abs(o)*0.5*s],[1*s,-5*s-Math.abs(o)*0.5*s]], orange);
+    ctx.restore();
+  }
+  ctx.fillStyle = yellow;
+  for (const p of [[-4,-1],[0,-3],[4,0],[-1,2]]){ ctx.beginPath(); ctx.arc(p[0]*s, p[1]*s, 0.9*s, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = 'rgb(20,20,24)'; ctx.beginPath(); ctx.arc(6*s,-2*s,0.7*s,0,TAU); ctx.fill();
+  ctx.restore();
+}
+/* ============================ UNDERWATER ART (items) ============================ */
+function drawMine(phase){
+  // deadly naval mine: dark iron sphere w/ contact horns, glint, dangling chain
+  const bob = Math.sin(now*1.2+phase)*2;
+  const rot = now*0.15+phase;
+  ctx.save();
+  ctx.translate(0,bob);
+  ctx.beginPath(); ctx.arc(0,0,14,0,TAU);
+  ctx.fillStyle='#34363F'; ctx.fill();
+  ctx.lineWidth=1.5; ctx.strokeStyle='rgba(20,20,26,0.5)'; ctx.stroke();
+  // darker fold shading, lower-right
+  ctx.beginPath(); ctx.arc(3,4,11,0,TAU);
+  ctx.fillStyle='rgba(20,22,28,0.35)'; ctx.fill();
+  // glint highlight facet
+  poly([[-7,-8],[-2,-10],[-4,-4],[-9,-3]], 'rgba(220,230,235,0.55)');
+  // 8 contact horns radiating out, slow rotation
+  for(let i=0;i<8;i++){
+    const a = rot + i*(TAU/8);
+    const x1=Math.cos(a)*13, y1=Math.sin(a)*13;
+    const x2=Math.cos(a)*19, y2=Math.sin(a)*19;
+    const pa=a+0.18, pb=a-0.18;
+    poly([
+      [x1+Math.cos(pa)*2, y1+Math.sin(pa)*2],
+      [x1+Math.cos(pb)*2, y1+Math.sin(pb)*2],
+      [x2+Math.cos(pb)*0.8, y2+Math.sin(pb)*0.8],
+      [x2+Math.cos(pa)*0.8, y2+Math.sin(pa)*0.8]
+    ], '#3F4250', 'rgba(20,20,26,0.4)');
+  }
+  // chain links dangling toward the seabed
+  ctx.strokeStyle='rgba(90,90,80,0.8)'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.ellipse(0,20,3,5,0,0,TAU); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(0,29,3,5,0,0,TAU); ctx.stroke();
+  ctx.restore();
+}
+
+function drawSquidInk(phase){
+  // deadly FUD squid squirting a billowing black ink cloud
+  const wob = Math.sin(now*3+phase)*2;
+  const cx=-2, cy=4;
+  ctx.fillStyle='rgba(30,30,38,0.92)';
+  [[-10,2,17],[8,6,15],[-2,12,14],[4,-4,13]].forEach(([ox,oy,r],i)=>{
+    const w = Math.sin(now*2.2+phase+i)*1.6;
+    ctx.beginPath(); ctx.arc(cx+ox, cy+oy+wob*0.3, r+w, 0, TAU); ctx.fill();
+  });
+  // small pink-grey squid, top right, worried eyes
+  ctx.save(); ctx.translate(14,-14);
+  poly([[-6,-6],[6,-6],[8,4],[0,8],[-8,4]], '#AC8094');
+  ctx.fillStyle='#FAF7F0';
+  ctx.beginPath(); ctx.arc(-3,-2,2.6,0,TAU); ctx.arc(3,-2,2.6,0,TAU); ctx.fill();
+  ctx.fillStyle='#2A2A26';
+  ctx.beginPath(); ctx.arc(-3,-1,1.1,0,TAU); ctx.arc(3,-1,1.1,0,TAU); ctx.fill();
+  // trailing triangle tentacles, swaying
+  for(let i=0;i<4;i++){
+    const tx=-6+i*4, sway=Math.sin(now*3+phase+i)*2;
+    poly([[tx,7],[tx+2,7],[tx+1+sway,15]], '#AC8094');
+  }
+  ctx.restore();
+  // FUD lettering inside the ink cloud
+  ctx.fillStyle='#FAF7F0';
+  ctx.font='900 11px -apple-system, sans-serif';
+  ctx.textAlign='center';
+  ctx.fillText('FUD', cx, cy+5);
+}
+
+function drawNet(phase){
+  // deadly fishing net hanging down from above; get caught = rugged
+  const sway = Math.sin(now*1.1+phase)*4;
+  const topY=-28, botY=22, halfW=20, h=botY-topY;
+  ctx.lineWidth=2.5; ctx.strokeStyle='rgba(150,116,74,0.9)';
+  ctx.beginPath(); ctx.moveTo(-halfW,topY); ctx.lineTo(halfW,topY); ctx.stroke();
+  // diamond-grid net, clipped to silhouette, swaying at the bottom
+  ctx.save();
+  ctx.beginPath(); ctx.rect(-halfW,topY,halfW*2,h); ctx.clip();
+  ctx.lineWidth=1.4; ctx.strokeStyle='#96744A';
+  for(let ox=-halfW*3; ox<=halfW*3; ox+=7){
+    ctx.beginPath(); ctx.moveTo(ox,topY); ctx.lineTo(ox+h*0.7+sway,botY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ox,topY); ctx.lineTo(ox-h*0.7+sway,botY); ctx.stroke();
+  }
+  ctx.restore();
+  // weighted corners with small grey sinkers
+  [[-halfW,botY],[halfW,botY],[0,botY+2]].forEach(([sx,sy])=>{
+    ctx.beginPath(); ctx.arc(sx+sway*0.3,sy,3,0,TAU);
+    ctx.fillStyle='#8B8F94'; ctx.fill();
+  });
+}
+
+function drawBubbleWrap(r, phase){
+  // transparent protective bubble drawn around an already-drawn item
+  const sx = 1+Math.sin(now*2+phase)*0.04;
+  const sy = 1-Math.sin(now*2+phase)*0.04;
+  ctx.save(); ctx.scale(sx,sy);
+  ctx.beginPath(); ctx.arc(0,0,r,0,TAU);
+  ctx.fillStyle='rgba(190,225,240,0.16)'; ctx.fill();
+  ctx.lineWidth=2; ctx.strokeStyle='rgba(190,225,240,0.9)'; ctx.stroke();
+  // crescent highlight, top-left
+  ctx.beginPath(); ctx.arc(-r*0.35,-r*0.4,r*0.4,TAU*0.55,TAU*0.85);
+  ctx.strokeStyle='rgba(255,255,255,0.65)'; ctx.lineWidth=2.5; ctx.stroke();
+  ctx.restore();
+  // two tiny satellite bubbles trailing below-right
+  [[r*0.75, r*0.85, 5],[r*1.05, r*1.15, 3]].forEach(([bx,by,br],i)=>{
+    const w = Math.sin(now*2.5+phase+i)*1;
+    ctx.beginPath(); ctx.arc(bx, by+w, br,0,TAU);
+    ctx.fillStyle='rgba(190,225,240,0.16)'; ctx.fill();
+    ctx.lineWidth=1.5; ctx.strokeStyle='rgba(190,225,240,0.85)'; ctx.stroke();
+  });
+}
+
+function drawSubSandwich(phase){
+  // collectible: 6-inch sub that's also a submarine
+  const bob = Math.sin(now*2+phase)*2;
+  const roll = Math.sin(now*1.3+phase)*0.04;
+  ctx.translate(0,bob); ctx.rotate(roll);
+  // stubby bread hull, rounded ends
+  poly([[-18,6],[-14,9],[14,9],[18,6],[18,-2],[14,-5],[-14,-5],[-18,-2]], '#E8C88A', 'rgba(58,54,48,0.35)');
+  // crusty top slice (the fold)
+  poly([[-16,-5],[16,-5],[14,-8],[-14,-8]], '#D0A868', 'rgba(58,54,48,0.3)');
+  // lettuce-green frill running the seam, zigzag
+  ctx.beginPath(); ctx.moveTo(-16,-2);
+  for(let x=-16;x<=16;x+=4) ctx.lineTo(x, (x/4)%2===0 ? -4 : -1);
+  ctx.lineTo(16,-2); ctx.closePath();
+  ctx.fillStyle='#8FAE5C'; ctx.fill();
+  // tomato porthole circles along the side
+  for(let i=-1;i<=1;i++){
+    ctx.beginPath(); ctx.arc(i*10, 2, 3, 0, TAU);
+    ctx.fillStyle='#D64632'; ctx.fill();
+    ctx.strokeStyle='rgba(58,54,48,0.4)'; ctx.lineWidth=0.8; ctx.stroke();
+  }
+  // tiny bread conning tower on top + toothpick periscope
+  poly([[-4,-8],[4,-8],[3,-13],[-3,-13]], '#D0A868', 'rgba(58,54,48,0.3)');
+  ctx.strokeStyle='#B08040'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(0,-13); ctx.lineTo(0,-19); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,-19); ctx.lineTo(3,-19); ctx.stroke();
+}
+
+function drawBuoy(x, gy, s, hz){
+  // floating marker buoy at the water surface, replaces flagpole base
+  const bob = Math.sin(now*1.6+x*0.01)*1.5*s;
+  const tilt = Math.sin(now*1.2+x*0.02)*0.08;
+  ctx.save(); ctx.translate(x, gy-13*s+bob); ctx.rotate(tilt);
+  // ring ripples around the waterline
+  ctx.strokeStyle=haze([190,225,240], hz); ctx.lineWidth=1;
+  [6,10,14].forEach((rw,i)=>{
+    ctx.beginPath(); ctx.ellipse(0, 13*s-bob*0.3, rw*s, rw*0.3*s, 0, 0, TAU);
+    ctx.globalAlpha = 0.5-i*0.15; ctx.stroke();
+  });
+  ctx.globalAlpha=1;
+  // rounded body, clipped so stripes stay inside the ellipse
+  ctx.beginPath(); ctx.ellipse(0,0,5*s,11*s,0,0,TAU);
+  ctx.save(); ctx.clip();
+  ctx.fillStyle = haze([250,247,240], hz); ctx.fillRect(-6*s,-12*s,12*s,24*s);
+  poly([[-5*s,-8*s],[5*s,-8*s],[5*s,-3*s],[-5*s,-3*s]], haze([214,58,52], hz));
+  poly([[-5*s,4*s],[5*s,4*s],[5*s,9*s],[-5*s,9*s]], haze([214,58,52], hz));
+  ctx.restore();
+  ctx.beginPath(); ctx.ellipse(0,0,5*s,11*s,0,0,TAU);
+  ctx.strokeStyle='rgba(58,54,48,0.3)'; ctx.lineWidth=0.8; ctx.stroke();
+  // small mast stub on top
+  poly([[-0.8*s,-11*s],[0.8*s,-11*s],[0.6*s,-17*s],[-0.6*s,-17*s]], haze([120,108,96], hz));
+  ctx.restore();
+}
+/* ============================ UNDERWATER ART (scenery) ============================ */
+function drawKelp(x, gy, s, hz, k){
+  const base = haze([96,142,88], hz);
+  const pale = haze([128,168,104], hz);
+  const fronds = 2 + (h01(k+7) > 0.5 ? 1 : 0);
+  for (let f=0; f<fronds; f++){
+    const fx = x + (f - (fronds-1)/2) * 5*s;
+    const segs = 3 + (h01(k+f*3) > 0.5 ? 1 : 0);
+    const segH = (30*s) / segs;
+    let px = fx, py = gy;
+    for (let i=0; i<segs; i++){
+      const grow = (i+1)/segs; // sway grows with height, base stays planted
+      const amt = 2*s + 5*s*grow;
+      const sway = Math.sin(now*0.9 + k + f*1.3 + i*0.7) * amt;
+      const nx = fx + sway, ny = py - segH;
+      const w = lerp(2.2*s, 0.8*s, grow);
+      poly([[px-w,py],[px+w,py],[nx+w*0.7,ny],[nx-w*0.7,ny]], i%2===0?base:pale);
+      px = nx; py = ny;
+    }
+  }
+}
+
+function drawCoral(x, gy, s, hz, k){
+  const pink = haze([226,122,108], hz);
+  const rose = haze([204,140,124], hz);
+  const dark = haze([160,100,90], hz);
+  const dot = haze([250,248,240], hz);
+  if (h01(k) < 0.5){
+    // stag-horn: tapering branches fanned from a common base
+    const branches = 4 + Math.floor(h01(k+1)*3);
+    for (let i=0;i<branches;i++){
+      const a = -0.9 + i*(1.8/(branches-1));
+      const len = 16*s*(0.6+0.4*h01(k+i*2));
+      const dx = Math.sin(a)*len, dy = -Math.cos(a)*len;
+      poly([[x-1.4*s,gy],[x+1.4*s,gy],[x+dx*0.6+0.6*s,gy+dy*0.6],[x+dx,gy+dy]], pink);
+    }
+  } else {
+    // brain coral dome with wavy ridges
+    ctx.save(); ctx.translate(x, gy);
+    ctx.beginPath(); ctx.ellipse(0,0,9*s,7*s,0,Math.PI,0,true); ctx.fillStyle=rose; ctx.fill();
+    ctx.strokeStyle = dark; ctx.lineWidth = Math.max(1, s);
+    for (let r=0;r<3;r++){
+      ctx.beginPath();
+      ctx.moveTo(-7*s+r*2*s, -1*s);
+      ctx.quadraticCurveTo(-2*s+r*2*s, -6*s, 5*s+r*1.5*s, -2*s);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  for (let i=0;i<3;i++){
+    const px = x + (h01(k+i*5)-0.5)*14*s;
+    const py = gy - h01(k+i*7)*10*s;
+    ctx.beginPath(); ctx.arc(px,py,1*s,0,TAU); ctx.fillStyle=dot; ctx.fill();
+  }
+}
+
+function drawLamboWreck(x, gy, s, hz){
+  const orange = haze([228,120,40], hz);
+  const darkOrange = haze([180,90,30], hz);
+  const wheel = haze([40,42,50], hz);
+  const glass = haze([170,220,220], hz);
+  const algae = haze([96,142,88], hz);
+  ctx.save();
+  ctx.translate(x, gy);
+  ctx.rotate(-0.18); // nose buried in the sand at an angle
+  poly([[-17*s,4*s],[-6*s,-6*s],[10*s,-7*s],[17*s,-1*s],[14*s,3*s],[-12*s,5*s]], orange);
+  poly([[-2*s,-6*s],[6*s,-6.5*s],[9*s,-2*s],[0*s,-1*s]], darkOrange);
+  poly([[-1*s,-5.8*s],[5*s,-6.2*s],[6.5*s,-2.5*s],[1*s,-2.2*s]], glass);
+  poly([[0*s,-1.5*s],[6*s,-1.8*s],[5*s,-9*s],[-0.5*s,-8*s]], darkOrange); // gullwing door open
+  ctx.beginPath(); ctx.arc(10*s, 3.5*s, 3.2*s, 0, TAU); ctx.fillStyle=wheel; ctx.fill();
+  ctx.beginPath(); ctx.arc(-9*s, 4*s, 3.2*s, Math.PI, 0); ctx.fillStyle = 'rgba(20,20,26,0.6)'; ctx.fill(); // missing wheel, empty arch
+  ctx.beginPath(); ctx.ellipse(-8*s,-4*s,2*s,1*s,0.3,0,TAU); ctx.fillStyle=algae; ctx.fill();
+  ctx.beginPath(); ctx.ellipse(-3*s,-5.5*s,1.4*s,0.8*s,-0.2,0,TAU); ctx.fillStyle=algae; ctx.fill();
+  ctx.restore();
+}
+
+function drawTreasure(x, gy, s, hz){
+  const wood = haze([150,112,66], hz);
+  const dark = haze([110,80,46], hz);
+  const gold = haze([226,178,64], hz);
+  poly([[x-8*s,gy],[x-8*s,gy-6*s],[x+8*s,gy-6*s],[x+8*s,gy]], wood);
+  poly([[x-8*s,gy-1*s],[x+8*s,gy-1*s],[x+8*s,gy-2*s],[x-8*s,gy-2*s]], dark);
+  poly([[x-8*s,gy-4.5*s],[x+8*s,gy-4.5*s],[x+8*s,gy-5.3*s],[x-8*s,gy-5.3*s]], dark);
+  poly([[x-8*s,gy-6*s],[x+8*s,gy-6*s],[x+6.5*s,gy-13*s],[x-6.5*s,gy-13*s]], wood); // lid tilted back
+  poly([[x-6.5*s,gy-13*s],[x+6.5*s,gy-13*s],[x+5.5*s,gy-11.5*s],[x-5.5*s,gy-11.5*s]], dark);
+  const n = 6;
+  for (let i=0;i<n;i++){
+    const cx = x + (i-(n-1)/2)*2.6*s + Math.sin(i*2.1)*0.6*s;
+    const cy = gy - 6*s - Math.abs(Math.sin(i*1.7))*2.2*s;
+    ctx.beginPath(); ctx.arc(cx, cy, 1.6*s, 0, TAU); ctx.fillStyle=gold; ctx.fill();
+  }
+  const tw = 0.5 + 0.5*Math.sin(now*3 + x*0.01);
+  if (tw > 0.6){
+    ctx.strokeStyle = `rgba(255,255,255,${(tw-0.6)*2})`;
+    ctx.lineWidth = Math.max(1, 0.6*s);
+    const sx = x+2*s, sy = gy-8*s;
+    ctx.beginPath(); ctx.moveTo(sx-2*s,sy); ctx.lineTo(sx+2*s,sy); ctx.moveTo(sx,sy-2*s); ctx.lineTo(sx,sy+2*s); ctx.stroke();
+  }
+}
+
+function drawAnchor(x, gy, s, hz){
+  const iron = haze([88,90,102], hz);
+  const dark = haze([60,62,72], hz);
+  const algae = haze([96,142,88], hz);
+  ctx.save();
+  ctx.translate(x, gy);
+  ctx.rotate(0.12); // slight lean
+  ctx.beginPath(); ctx.arc(0,-22*s,2.6*s,0,TAU); ctx.lineWidth=1.4*s; ctx.strokeStyle=iron; ctx.stroke();
+  poly([[-1*s,-20*s],[1*s,-20*s],[1*s,-4*s],[-1*s,-4*s]], iron); // shank
+  poly([[-5*s,-15*s],[5*s,-15*s],[5*s,-13.5*s],[-5*s,-13.5*s]], dark);
+  poly([[-1*s,-4*s],[1*s,-4*s],[7*s,2*s],[3*s,3*s]], iron); // flukes
+  poly([[-1*s,-4*s],[1*s,-4*s],[-7*s,2*s],[-3*s,3*s]], iron);
+  poly([[5*s,-0.5*s],[8*s,1*s],[5*s,4*s],[3*s,2.5*s]], dark);
+  poly([[-5*s,-0.5*s],[-8*s,1*s],[-5*s,4*s],[-3*s,2.5*s]], dark);
+  ctx.restore();
+  let cx = x+6*s, cy = gy+2*s;
+  for (let i=0;i<4;i++){
+    ctx.beginPath(); ctx.ellipse(cx, cy, 1.3*s, 0.9*s, 0.4, 0, TAU); ctx.lineWidth=0.8*s; ctx.strokeStyle=iron; ctx.stroke();
+    cx += 2.2*s; cy += 0.6*s;
+  }
+  poly([[x-2*s,gy],[x,gy-3*s],[x+2*s,gy]], algae);
+}
+
+function drawBottle(x, gy, s, hz){
+  const glass = haze([120,170,140], hz);
+  const glassDark = haze([90,140,112], hz);
+  const cork = haze([180,140,90], hz);
+  const paper = haze([232,224,200], hz);
+  ctx.save();
+  ctx.translate(x, gy);
+  ctx.rotate(0.5); // lying on the sand
+  poly([[-6*s,0],[-6*s,-4*s],[3*s,-4*s],[5*s,-2*s],[5*s,0]], glass);
+  poly([[-6*s,-4*s],[-6*s,0],[-4*s,0],[-4*s,-4*s]], glassDark);
+  poly([[5*s,-3*s],[8*s,-2.6*s],[8*s,-1*s],[5*s,-1.2*s]], glass); // neck
+  poly([[8*s,-2.6*s],[9.5*s,-2.3*s],[9.5*s,-1.3*s],[8*s,-1*s]], cork);
+  poly([[-4*s,-3*s],[1*s,-3.2*s],[1*s,-1*s],[-4*s,-0.8*s]], paper); // rolled note
+  poly([[-5.5*s,-3.8*s],[-4.2*s,-3.9*s],[-4.2*s,-3.3*s],[-5.5*s,-3.2*s]], haze([255,255,255], hz));
+  ctx.restore();
+}
+
+function drawTurtle(x, gy, s, hz, flip){
+  const shell = haze([110,140,90], hz);
+  const scute = haze([80,108,66], hz);
+  const skin = haze([140,166,120], hz);
+  const fl = flip ? -1 : 1;
+  const swimY = gy - 14*s + Math.sin(now*1.1 + x*0.01)*1.2*s;
+  ctx.save();
+  ctx.translate(x, swimY);
+  ctx.scale(fl,1);
+  ctx.beginPath(); ctx.ellipse(0,0,9*s,5.5*s,0,Math.PI,0,true); ctx.fillStyle=shell; ctx.fill();
+  poly([[-4*s,-0.5*s],[0*s,-4.5*s],[4*s,-0.5*s],[0*s,1*s]], scute);
+  poly([[-8*s,0*s],[-4*s,-3.5*s],[-4*s,0.5*s]], scute);
+  poly([[8*s,-1*s],[12*s,-1.5*s],[12*s,1.5*s],[8*s,1*s]], skin); // head
+  ctx.beginPath(); ctx.arc(11*s,-0.3*s,0.6*s,0,TAU); ctx.fillStyle='#222'; ctx.fill();
+  const ang = Math.sin(now*1.4)*0.2;
+  ctx.save(); ctx.translate(5*s,1*s); ctx.rotate(0.6+ang);
+  poly([[0,0],[6*s,1*s],[5*s,3*s],[-1*s,1*s]], skin); ctx.restore(); // front flipper (large)
+  ctx.save(); ctx.translate(-6*s,1*s); ctx.rotate(-0.6-ang);
+  poly([[0,0],[-6*s,1*s],[-5*s,3*s],[1*s,1*s]], skin); ctx.restore();
+  ctx.save(); ctx.translate(4*s,2*s); ctx.rotate(0.4);
+  poly([[0,0],[3*s,1*s],[2.5*s,2.5*s],[-0.5*s,1*s]], skin); ctx.restore(); // rear flipper (smaller)
+  ctx.save(); ctx.translate(-4*s,2*s); ctx.rotate(-0.4);
+  poly([[0,0],[-3*s,1*s],[-2.5*s,2.5*s],[0.5*s,1*s]], skin); ctx.restore();
+  ctx.restore();
+}
+
+function drawOctopus(x, gy, s, hz){
+  const purple = haze([150,100,150], hz);
+  const purpleDark = haze([120,78,120], hz);
+  const gold = haze([226,178,64], hz);
+  const bodyY = gy - 12*s + Math.sin(now*0.8+x*0.02)*0.8*s;
+  ctx.beginPath(); ctx.ellipse(x, bodyY, 6.5*s, 5.5*s, 0, Math.PI, 0, true); ctx.fillStyle=purple; ctx.fill();
+  ctx.beginPath(); ctx.arc(x-2.4*s, bodyY-1.5*s, 1.4*s, 0, TAU); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x+2.4*s, bodyY-1.5*s, 1.4*s, 0, TAU); ctx.fillStyle='#fff'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x-2.4*s, bodyY-1.5*s, 0.6*s, 0, TAU); ctx.fillStyle='#222'; ctx.fill();
+  ctx.beginPath(); ctx.arc(x+2.4*s, bodyY-1.5*s, 0.6*s, 0, TAU); ctx.fillStyle='#222'; ctx.fill();
+  const legs = 6;
+  for (let i=0;i<legs;i++){
+    const a0 = -0.3 + i*(2.6/(legs-1));
+    let px = x + Math.sin(a0)*5*s, py = bodyY + Math.cos(a0)*3*s;
+    let ang = a0;
+    for (let seg=0; seg<3; seg++){
+      const curl = Math.sin(now*1.6 + i*0.9 + seg*0.8) * 0.35;
+      ang += curl*0.5 + 0.35;
+      const len = 3*s;
+      const nx = px + Math.sin(ang)*len, ny = py + Math.cos(ang)*len*0.6 + len*0.4;
+      const w = lerp(1.6*s, 0.6*s, seg/2);
+      poly([[px-w,py],[px+w,py],[nx+w*0.6,ny],[nx-w*0.6,ny]], seg%2===0?purple:purpleDark);
+      if (i===2 && seg===2){
+        ctx.beginPath(); ctx.arc(nx, ny, 1*s, 0, TAU); ctx.fillStyle=gold; ctx.fill(); // coin in tentacle
+      }
+      px=nx; py=ny;
+    }
+  }
+}
+
+function drawSeahorse(x, gy, s, hz, flip){
+  const tan = haze([214,168,96], hz);
+  const tanDark = haze([176,134,72], hz);
+  const kelp = haze([96,142,88], hz);
+  const fl = flip ? -1 : 1;
+  const bob = Math.sin(now*1.2 + x*0.02) * 1.2*s;
+  const cy = gy - 10*s + bob;
+  ctx.save();
+  ctx.translate(x, cy);
+  ctx.scale(fl,1);
+  poly([[-1.5*s,6*s],[1.5*s,6*s],[2.5*s,2*s],[-0.5*s,1.5*s]], tan); // S-curve body, 3 stacked quads
+  poly([[-0.5*s,1.5*s],[2.5*s,2*s],[2*s,-2*s],[-1*s,-2*s]], tan);
+  poly([[-1*s,-2*s],[2*s,-2*s],[0.5*s,-5*s],[-2*s,-4.5*s]], tan);
+  poly([[-2*s,-4.5*s],[0.5*s,-5*s],[0*s,-6.5*s],[-2*s,-6*s]], tanDark); // coronet
+  poly([[0.5*s,-5*s],[3.5*s,-5.3*s],[3.3*s,-4.3*s],[0.5*s,-4.2*s]], tan); // snout
+  ctx.beginPath(); ctx.arc(0.2*s,-4.7*s,0.4*s,0,TAU); ctx.fillStyle='#222'; ctx.fill();
+  ctx.strokeStyle = tanDark; ctx.lineWidth = Math.max(1,0.5*s);
+  for (let i=0;i<4;i++){
+    const py = 4*s - i*2.2*s;
+    ctx.beginPath(); ctx.moveTo(-1.2*s, py); ctx.lineTo(1.6*s, py-0.6*s); ctx.stroke(); // belly ridge
+  }
+  poly([[-1.5*s,6*s],[1.5*s,6*s],[1*s,9*s],[-1*s,8.5*s]], tan); // curled tail
+  poly([[-1*s,8.5*s],[1*s,9*s],[0,11*s]], tanDark);
+  poly([[-0.6*s,10*s],[0.6*s,10*s],[0,13*s]], kelp); // kelp stub gripped
+  ctx.restore();
+}
+
+// Ambient jellyfish system (replaces birds)
+const jellies = [];
+
+function seedJellies(){
+  jellies.length = 0;
+  for (let i=0;i<3;i++){
+    const hh = h01(i*13+1);
+    jellies.push({ x: (i+0.5)*(W/3), y: H*0.15 + hh*H*0.4, ph: i*2.1, s: 0.8+h01(i*7+3)*0.6, v: 0.6+h01(i*5+9)*0.4 });
+  }
+}
+
+function updateJellies(dt){
+  if (!W) return;
+  if (!jellies.length) seedJellies();
+  for (const j of jellies){
+    j.x -= scrollSpeed()*0.05*dt; // lags far behind foreground scroll
+    j.y -= j.v*4*dt; // slow upward drift
+    j.ph += dt*1.0;
+    if (j.y < H*0.05) j.y = H*0.55;
+    if (j.x < -30){
+      j.x = W+30;
+      j.y = H*0.1 + h01(Math.floor(now*7)+j.ph*13)*H*0.35;
+    }
+  }
+}
+
+function drawJellies(){
+  for (const j of jellies){
+    const sq = 1 + Math.sin(now*2 + j.ph)*0.12; // bell contraction
+    const r = 9*j.s;
+    ctx.save();
+    ctx.translate(j.x, j.y);
+    ctx.scale(1, sq);
+    ctx.beginPath(); ctx.arc(0,0,r,Math.PI,0,true); ctx.fillStyle='rgba(214,190,230,0.55)'; ctx.fill();
+    ctx.beginPath(); ctx.ellipse(0, r*0.15, r*0.85, r*0.35, 0, 0, TAU); ctx.fillStyle='rgba(180,150,200,0.4)'; ctx.fill();
+    ctx.restore();
+    for (let t=0; t<4; t++){
+      const tx = j.x + (t-1.5)*r*0.35;
+      const wig = Math.sin(now*2.4 + j.ph + t*0.8) * r*0.3;
+      ctx.beginPath();
+      ctx.moveTo(tx, j.y + r*0.2*sq);
+      ctx.quadraticCurveTo(tx+wig, j.y + r*1.1*sq, tx+wig*0.6, j.y + r*1.8*sq);
+      ctx.strokeStyle='rgba(214,190,230,0.35)';
+      ctx.lineWidth = Math.max(1, j.s);
+      ctx.stroke();
+    }
+  }
+}
 /* =====================================================================
    ANALYTICS — self-hosted, queued in localStorage, flushed in batches
    ===================================================================== */
@@ -2042,7 +2654,7 @@ function paintCard(x, run, champ){
   const top = champ ? 74 : 0;
   x.fillStyle='#2E2A24'; x.textAlign='left';
   x.font='900 44px -apple-system, Helvetica, sans-serif';
-  x.fillText('MOONSHOT', 70, 110+top);
+  x.fillText('IN TOO DEEP', 70, 110+top);
   x.fillStyle='#E4572E'; x.font='800 22px -apple-system, Helvetica, sans-serif';
   x.fillText(champ ? 'I FLEW THE REAL PLS CHART' : 'I FLEW THE REAL PLS CHART', 70, 152+top);
   x.fillStyle='#2E2A24'; x.font='900 170px -apple-system, Helvetica, sans-serif';
@@ -2069,7 +2681,7 @@ async function shareScore(run){
   paintCard(x, run, lastRank && lastRank.rank === 1 ? { rank:1, period:'daily' } : null);
   const blob = await new Promise(res=>c.toBlob(res,'image/png'));
   const file = new File([blob], 'moonshot-score.png', { type:'image/png' });
-  const text = `I scored ${run.score.toLocaleString()} flying the real PLS chart in MOONSHOT 🚀📈\n\nPlay: https://chingching.xyz/moonshot/`;
+  const text = `I scored ${run.score.toLocaleString()} swimming the real PLS chart in IN TOO DEEP 🐡📉\n\nPlay: https://chingching.xyz/in-too-deep/`;
   if (navigator.canShare && navigator.canShare({ files:[file] })){
     try { await navigator.share({ files:[file], text }); return; } catch(e){ if (e.name==='AbortError') return; }
   }
@@ -2220,7 +2832,7 @@ function endRun(cause, won){
     el('overTitle').innerHTML = won ? 'YOU MADE IT<span class="accent">!</span>'
                                     : 'REKT<span class="accent">!</span>';
     el('deathCause').textContent = won
-      ? 'You rode every day of the chart and reached the Peg Flag. +' + WIN_BONUS.toLocaleString() + ' bonus.'
+      ? 'You swam every day of the chart and reached the Peg Flag. +' + WIN_BONUS.toLocaleString() + ' bonus.'
       : 'Taken out by ' + cause + '.';
     el('statDist').textContent = days.toLocaleString();
     el('statCoins').textContent = coins;
@@ -2287,6 +2899,7 @@ function frame(ts){
   const dt = Math.min(0.033, (ts-lastT)/1000 || 0.016);
   lastT = ts; now = ts/1000;
   updateBirds(dt);
+  if (scene === 'reef') updateJellies(dt);
   updateTrip(dt);
 
   if (state==='countdown'){
@@ -2316,6 +2929,7 @@ function frame(ts){
     updateParticles(dt, spd);
     updateThrust(dt, spd);
     shieldFlash = Math.max(0, shieldFlash - dt);
+    puffK += ((shield > 0 ? 1 : 0) - puffK) * Math.min(1, 9*dt);
     musicTick();
   } else if (state==='dead'){
     for (const b of deathBits){ b.vy += 1400*dt; b.x += b.vx*dt; b.y += b.vy*dt; b.rot += b.vr*dt; }
@@ -2346,6 +2960,14 @@ function checkCollisions(){
     const dx = it.x-px, dy = iy-pyC;
     const rr = it.r + PLAYER_R;
     if (dx*dx+dy*dy < rr*rr){
+      if (it.whale){
+        // Hitting the whale is the point: it pumps you.
+        it.hit = true; score += 250; coins++;
+        floaters.push({ x:W*PLAYER_SX+dx, y:iy-46, t:0, txt:'WHALE PUMP +250' });
+        sfx('whalesong');
+        track('collectible_picked_up', { type: 'whale', score_value: 250 });
+        continue;
+      }
       if (it.ob){
         if (shield > 0){          // marketing beats FUD: burn a shield, survive
           shield -= 1; shieldFlash = 0.5; it.hit = true;
@@ -2389,8 +3011,8 @@ function render(){
 
   // sun (paper, with fold rays)
   const sunA = wmix('sun');
-  if (scene === 'space'){
-    if (sunA > 0.02) drawEarth(sunA);     // earthrise, where the paper sun hangs at home
+  if (scene === 'reef'){
+    if (sunA > 0.02) drawSunRays(sunA);   // light from the surface
   } else if (sunA > 0.02){
     ctx.save(); ctx.globalAlpha = sunA;
     ctx.translate(W*0.82, H*0.16); ctx.rotate(now*0.1);
@@ -2469,6 +3091,7 @@ function drawMountains(){
     if (scene === 'forest' && b.far) drawTreeline(b);
     drawScenery(bi);
     if (bi === 0) drawBirds();   // over the far ridge, behind the near one
+    if (bi === 0 && scene === 'reef') drawJellies();
   }
 }
 
@@ -2484,7 +3107,7 @@ function drawTerrain(){
   ctx.beginPath(); ctx.moveTo(-4,H+4);
   for (let i=0;i<n;i++) ctx.lineTo(i*TSTEP, hbuf[i]);
   ctx.lineTo(W+4,H+4); ctx.closePath();
-  ctx.fillStyle = scene === 'space' ? '#C3BFC9' : '#FBF7EE';
+  ctx.fillStyle = scene === 'reef' ? '#DCCDA4' : '#FBF7EE';
   ctx.fill();
   // soft under-surface band
   ctx.strokeStyle='rgba(58,54,48,0.05)'; ctx.lineWidth=12;
