@@ -510,7 +510,7 @@ function softShadow(x, y, w){
    COURSE — obstacles & collectibles, seeded from the terrain date
    ===================================================================== */
 let items = [];      // {type,x,dy|topY|len,r,val?,ob?}
-const OB_LABEL = { rock:'a Rug Pull', rcandle:'a Red Candle', cloud:'the FUD Ink', bomb:'a Sea Mine',
+const OB_LABEL = { rock:'a Rock', rcandle:'a Red Candle', cloud:'the FUD Ink', bomb:'a Sea Mine',
                    wall:'a Fishing Line', sec:'the SEC', notice:'an Interpol Red Notice', shark:'a Shark' };
 
 
@@ -724,40 +724,20 @@ function drawItem(it, sx){
       break;
     }
     case 'rock': {
-      // the Rug Pull: a persian rug, half rolled up and ready to be yanked
-      const R='#A32C3C', G='#D9A441', C='#F5E7C8';
-      // flat section still on the chart
-      poly([[-27,16],[9,16],[9,4],[-27,4]], R, 'rgba(58,54,48,0.35)');
-      ctx.strokeStyle=G; ctx.lineWidth=1.5;
-      ctx.beginPath();
-      ctx.moveTo(-26,6.5); ctx.lineTo(8,6.5);
-      ctx.moveTo(-26,13.5); ctx.lineTo(8,13.5);
-      ctx.stroke();
-      // cream medallions down the field
-      for (const dx of [-21,-13,-5,3]){
-        poly([[dx,10],[dx+3,7],[dx+6,10],[dx+3,13]], C);
-        poly([[dx+3,8.6],[dx+4.4,10],[dx+3,11.4],[dx+1.6,10]], R);
-      }
-      // fringe on the loose end
-      ctx.strokeStyle=C; ctx.lineWidth=1.2;
-      ctx.beginPath();
-      ctx.moveTo(-27,5.5); ctx.lineTo(-31,6.4);
-      ctx.moveTo(-27,8.5); ctx.lineTo(-31.5,9);
-      ctx.moveTo(-27,11.5); ctx.lineTo(-31.5,11.8);
-      ctx.moveTo(-27,14.5); ctx.lineTo(-31,15.6);
-      ctx.stroke();
-      // the roll
-      ctx.save(); ctx.translate(15,4);
-      ctx.fillStyle=R; ctx.beginPath(); ctx.arc(0,0,12,0,TAU); ctx.fill();
-      ctx.fillStyle=shade(R,-0.22); ctx.beginPath(); ctx.arc(0,0,12,Math.PI*0.4,Math.PI*1.4); ctx.fill();
-      ctx.strokeStyle=G; ctx.lineWidth=2;
-      ctx.beginPath(); ctx.arc(0,0,8,0,TAU); ctx.stroke();
-      ctx.strokeStyle=C; ctx.lineWidth=1.5;
-      ctx.beginPath(); ctx.arc(0,0,4.2,0,TAU); ctx.stroke();
-      ctx.fillStyle=shade(R,-0.4); ctx.beginPath(); ctx.arc(0,0,1.9,0,TAU); ctx.fill();
-      ctx.strokeStyle='rgba(58,54,48,0.4)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.arc(0,0,12,0,TAU); ctx.stroke();
-      ctx.restore();
+      // a seabed boulder. This obstacle used to be a "rug pull" (a persian rug),
+      // which made no sense underwater; it is a plain rock now, matching its type.
+      const base='#8C857A', dk='#6C665C', lt='#A79E8E', moss='#5E8A5A';
+      poly([[-22,15],[-23,0],[-13,-13],[3,-18],[16,-12],[22,2],[19,15]], base, 'rgba(58,54,48,0.30)');
+      // shaded right side / underside
+      poly([[3,-18],[16,-12],[22,2],[19,15],[3,15],[8,-3]], shade(base,-0.15));
+      // a lighter facet catching the light, top-left
+      poly([[-13,-13],[3,-18],[1,-2],[-11,1]], lt);
+      // a crack
+      ctx.strokeStyle=dk; ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(-6,-7); ctx.lineTo(2,3); ctx.lineTo(-2,15); ctx.stroke();
+      // a little algae on the crown
+      poly([[-13,-13],[-5,-16],[1,-13],[-5,-10]], moss);
+      poly([[3,-16],[10,-15],[8,-11],[2,-12]], moss);
       break;
     }
     case 'rcandle': candle('#D6453D', 22, 52, true); break;
@@ -948,11 +928,12 @@ function drawCharacter(key, t, grounded, vy, angle, forCard){
 
 
 /* =====================================================================
-   PULSE THRUST — every press fires a PulseChain-gradient burst out the back
+   DART BUBBLES — every press sheds a few bubbles off the tail (a fish, not
+   a rocket: no flame, no jet)
    ===================================================================== */
 const PLS_HUES = ['#FF2E9A', '#C246E0', '#9B5CFF', '#7FB0FF'];
 let thrustT = 0;
-let puffK = 0;                 // 0 deflated .. 1 fully puffed; chases shield state              // burst timer, drives the flame
+let puffK = 0;                 // 0 deflated .. 1 fully puffed; chases shield state
 const rings = [];             // expanding pulse rings
 const puffs = [];             // gradient exhaust motes
 
@@ -1002,35 +983,7 @@ function drawThrust(){
     ctx.beginPath(); ctx.arc(p.x, p.y, p.s*(0.6+k*0.4), 0, TAU); ctx.stroke();
     ctx.restore();
   }
-  // pulse rings
-  for (const r of rings){
-    const k = r.t/0.42;
-    ctx.save();
-    ctx.globalAlpha = (1-k)*0.5;
-    ctx.strokeStyle = '#9B5CFF';
-    ctx.lineWidth = 2.5*(1-k) + 0.5;
-    ctx.beginPath(); ctx.arc(r.x, player.y - 13, 6 + k*30, 0, TAU); ctx.stroke();
-    ctx.restore();
-  }
-  // gradient flame out the back
-  if (thrustT > 0){
-    const k = thrustT/0.34;
-    const sx = W*PLAYER_SX - 15, sy = player.y - 13;
-    const len = 20 + 30*k;
-    const g = ctx.createLinearGradient(sx, sy, sx-len, sy);
-    g.addColorStop(0, '#FF2E9A');
-    g.addColorStop(0.45, '#9B5CFF');
-    g.addColorStop(1, 'rgba(127,176,255,0)');
-    ctx.save();
-    ctx.globalAlpha = 0.55 + k*0.45;
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.moveTo(sx, sy - (3 + 5*k));
-    ctx.lineTo(sx - len, sy);
-    ctx.lineTo(sx, sy + (3 + 5*k));
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
+  // No flame, no jet: a fish darts and sheds bubbles, nothing more.
 }
 
 
@@ -2119,7 +2072,7 @@ function drawSquidInk(phase){
 }
 
 function drawNet(phase){
-  // deadly fishing net hanging down from above; get caught = rugged
+  // deadly fishing net hanging down from above; get caught = rekt
   const sway = Math.sin(now*1.1+phase)*4;
   const topY=-28, botY=22, halfW=20, h=botY-topY;
   ctx.lineWidth=2.5; ctx.strokeStyle='rgba(150,116,74,0.9)';
