@@ -171,7 +171,7 @@ h1 .accent { color:#E4572E; }
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
   <div class="statrow">
-    <span><b id="statDist">0</b>days swum</span>
+    <span><b id="statDist">n/a</b>reached</span>
     <span><b id="statCoins">0</b>collected</span>
     <span><b id="statBest">0</b>best</span>
   </div>
@@ -2396,15 +2396,20 @@ function seedJellies(){
   jellies.length = 0;
   for (let i=0;i<3;i++){
     const hh = h01(i*13+1);
-    jellies.push({ x: (i+0.5)*(W/3), y: H*0.15 + hh*H*0.4, ph: i*2.1, s: 0.8+h01(i*7+3)*0.6, v: 0.6+h01(i*5+9)*0.4 });
+    jellies.push({ x: (i+0.5)*(W/3), y: H*0.15 + hh*H*0.4, ph: i*2.1, s: 0.8+h01(i*7+3)*0.6, v: 0.6+h01(i*5+9)*0.4, vx: 8 + h01(i*11+5)*12 });
   }
 }
 
 function updateJellies(dt){
   if (!W) return;
   if (!jellies.length) seedJellies();
+  // Parallax follows the ACTUAL forward motion. On the menu nothing scrolls, so
+  // the jellies just drift gently on their own. During a run they stream past at
+  // a large fraction of the scroll, so you clearly swim PAST them instead of them
+  // hanging beside you (a small fraction reads as the jellyfish tracking you).
+  const drift = (state === 'playing') ? scrollSpeed()*0.55 : 0;
   for (const j of jellies){
-    j.x -= scrollSpeed()*0.05*dt; // lags far behind foreground scroll
+    j.x -= (j.vx + drift)*dt;
     j.y -= j.v*4*dt; // slow upward drift
     j.ph += dt*1.0;
     if (j.y < H*0.05) j.y = H*0.55;
@@ -2522,7 +2527,7 @@ async function submitScore(run){
       body: JSON.stringify({
         game: GAME, client_id: clientId, client_secret: clientSecret, session: runSession, name: name || 'anon',
         score: run.score, distance: run.distance, duration_ms: run.durationMs,
-        variant: variantKey, day: terrain.dateDay,
+        variant: variantKey, day: terrain.dateDay, reach_day: run.reachDay,
       }),
     });
     if (!post.ok){
@@ -2758,10 +2763,24 @@ function die(cause){
 }
 
 /// Shared tail of every run, won or lost: bank it, submit it, show it.
+// A chart day-index -> a calendar date ("22 Aug 2023"), or "Today" once a run
+// has reached the present edge of the chart.
+function reachLabel(dayIdx){
+  const today = Math.floor(Date.now()/86400000);
+  if (!Number.isFinite(dayIdx) || dayIdx <= 0) return 'n/a';
+  if (dayIdx >= today) return 'Today';
+  const dt = new Date(dayIdx*86400000), M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return dt.getUTCDate() + ' ' + M[dt.getUTCMonth()] + ' ' + dt.getUTCFullYear();
+}
+
 function endRun(cause, won){
   const distance = Math.round(rideX/10);             // server unit (anti-cheat caps)
   const days = Math.max(1, Math.round(rideX/SEG));   // what the player sees: days of chart
-  lastRun = { score: Math.round(score), distance, days, durationMs: Math.round(performance.now()-runStartTs), cause };
+  // The chart day-index reached. Winning means swimming right up to the present
+  // edge of the chart, so a win reads as "Today"; otherwise it is startDay + days.
+  const todayIdx = Math.floor(Date.now()/86400000);
+  const reachDay = won ? todayIdx : Math.min(todayIdx, terrain.startDay + days);
+  lastRun = { score: Math.round(score), distance, days, reachDay, durationMs: Math.round(performance.now()-runStartTs), cause };
   const isBest = lastRun.score > best;
   if (isBest){ best = lastRun.score; localStorage.setItem('pnj_best', String(best)); }
   track('game_over', { score:lastRun.score, distance, days, run_duration_ms:lastRun.durationMs, obstacles_hit:cause, won:!!won });
@@ -2787,7 +2806,7 @@ function endRun(cause, won){
     el('deathCause').textContent = won
       ? 'You swam every day of the chart and reached the Peg Flag. +' + WIN_BONUS.toLocaleString() + ' bonus.'
       : 'Taken out by ' + cause + '.';
-    el('statDist').textContent = days.toLocaleString();
+    el('statDist').textContent = reachLabel(lastRun.reachDay);
     el('statCoins').textContent = coins;
     el('statBest').textContent = best.toLocaleString();
     el('newBest').style.visibility = isBest ? 'visible' : 'hidden';
