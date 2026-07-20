@@ -171,7 +171,7 @@ h1 .accent { color:#E4572E; }
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
   <div class="statrow">
-    <span><b id="statDist">0</b>days flown</span>
+    <span><b id="statDist">n/a</b>reached</span>
     <span><b id="statCoins">0</b>collected</span>
     <span><b id="statBest">0</b>best</span>
   </div>
@@ -1957,7 +1957,7 @@ async function submitScore(run){
       body: JSON.stringify({
         game: GAME, client_id: clientId, client_secret: clientSecret, session: runSession, name: name || 'anon',
         score: run.score, distance: run.distance, duration_ms: run.durationMs,
-        variant: variantKey, day: terrain.dateDay,
+        variant: variantKey, day: terrain.dateDay, reach_day: run.reachDay,
       }),
     });
     if (!post.ok){
@@ -2193,10 +2193,24 @@ function die(cause){
 }
 
 /// Shared tail of every run, won or lost: bank it, submit it, show it.
+// A chart day-index -> a calendar date ("22 Aug 2023"), or "Today" once a run
+// has reached the present edge of the chart.
+function reachLabel(dayIdx){
+  const today = Math.floor(Date.now()/86400000);
+  if (!Number.isFinite(dayIdx) || dayIdx <= 0) return 'n/a';
+  if (dayIdx >= today) return 'Today';
+  const dt = new Date(dayIdx*86400000), M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return dt.getUTCDate() + ' ' + M[dt.getUTCMonth()] + ' ' + dt.getUTCFullYear();
+}
+
 function endRun(cause, won){
   const distance = Math.round(rideX/10);             // server unit (anti-cheat caps)
   const days = Math.max(1, Math.round(rideX/SEG));   // what the player sees: days of chart
-  lastRun = { score: Math.round(score), distance, days, durationMs: Math.round(performance.now()-runStartTs), cause };
+  // The chart day-index reached. Winning means swimming right up to the present
+  // edge of the chart, so a win reads as "Today"; otherwise it is startDay + days.
+  const todayIdx = Math.floor(Date.now()/86400000);
+  const reachDay = won ? todayIdx : Math.min(todayIdx, terrain.startDay + days);
+  lastRun = { score: Math.round(score), distance, days, reachDay, durationMs: Math.round(performance.now()-runStartTs), cause };
   const isBest = lastRun.score > best;
   if (isBest){ best = lastRun.score; localStorage.setItem('pnj_best', String(best)); }
   track('game_over', { score:lastRun.score, distance, days, run_duration_ms:lastRun.durationMs, obstacles_hit:cause, won:!!won });
@@ -2222,7 +2236,7 @@ function endRun(cause, won){
     el('deathCause').textContent = won
       ? 'You rode every day of the chart and reached the Peg Flag. +' + WIN_BONUS.toLocaleString() + ' bonus.'
       : 'Taken out by ' + cause + '.';
-    el('statDist').textContent = days.toLocaleString();
+    el('statDist').textContent = reachLabel(lastRun.reachDay);
     el('statCoins').textContent = coins;
     el('statBest').textContent = best.toLocaleString();
     el('newBest').style.visibility = isBest ? 'visible' : 'hidden';
