@@ -2817,7 +2817,58 @@ const ARCADE = [
   { slug:'moonshot',      name:'MOON<span class="accent">SHOT</span>', href:'/moonshot/',      hero:heroRocket },
   { slug:'pump-and-jump', name:'PUMP <span class="accent">&amp;</span> JUMP', href:'/pump-and-jump/', hero:heroMoto },
   { slug:'in-too-deep',   name:'IN TOO <span class="accent">DEEP</span>', href:'/in-too-deep/',   hero:heroFish },
+  { slug:'pulse-cannon',  name:'PULSE <span class="accent">CANNON</span>', href:'/pulse-cannon/',  hero:heroCannon },
 ];
+function heroCannon(){
+  // Pulse Cannon's night sky: no chart here, this one is pure PulseChain
+  const g=ctx.createLinearGradient(0,0,0,64);
+  g.addColorStop(0,'#0A0D1E'); g.addColorStop(1,'#1B2044');
+  ctx.fillStyle=g; ctx.fillRect(0,0,140,64);
+  ctx.fillStyle='rgba(232,234,246,0.8)';
+  for (let i=0;i<14;i++){ ctx.globalAlpha=0.3+((i*37)%50)/100; ctx.fillRect((i*53)%140,(i*31)%38,1.2,1.2); }
+  ctx.globalAlpha=1;
+  for (let i=0;i<4;i++){   // a row of Interpol red notices on the march
+    const x=28+i*28, y=13;
+    poly([[x-6,y-8],[x+6,y-8],[x+6,y+8],[x-6,y+8]],'#FDFCF8','rgba(0,0,0,0.35)');
+    poly([[x-6,y-8],[x+6,y-8],[x+6,y-2],[x-6,y-2]],'#C0392B');
+    ctx.fillStyle='#B9B2A4';
+    ctx.beginPath(); ctx.arc(x-2.5,y+1.5,1.5,0,7); ctx.fill();
+    poly([[x-4.5,y+6],[x-0.5,y+6],[x-1.2,y+3.5],[x-3.8,y+3.5]],'#B9B2A4');
+  }
+  for (let i=0;i<4;i++){   // and the garden gates below them
+    const x=28+i*28, y=34;
+    ctx.fillStyle='#8A5A2B'; ctx.fillRect(x-9.5,y-6,2.2,14); ctx.fillRect(x+7.3,y-6,2.2,14);
+    for (let p=-1;p<=1;p++){
+      const px=x+p*3.4, h=6-Math.abs(p)*1.6;
+      poly([[px-1.2,y+8],[px+1.2,y+8],[px+1.2,y-h],[px,y-h-2],[px-1.2,y-h]],'#A87441','rgba(0,0,0,0.25)');
+    }
+    ctx.fillStyle='#8A5A2B'; ctx.fillRect(x-7,y+0.5,14,1.8); ctx.fillRect(x-7,y+4.5,14,1.8);
+    ctx.fillStyle='#F2C14E'; ctx.fillRect(x+2.5,y+1.2,3.8,3.6);
+  }
+  ctx.fillStyle='#232848'; ctx.fillRect(0,58,140,6);
+  const px=70, py=58;
+  // the tracked pulse tank
+  ctx.fillStyle='#22263B';
+  ctx.beginPath(); ctx.moveTo(px-11,py); ctx.lineTo(px+11,py);
+  ctx.arc(px+11,py-2.75,2.75,Math.PI/2,-Math.PI/2,true);
+  ctx.lineTo(px-11,py-5.5);
+  ctx.arc(px-11,py-2.75,2.75,-Math.PI/2,Math.PI/2,true);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#4A5178';
+  for (const wx of [-7,0,7]){ ctx.beginPath(); ctx.arc(px+wx,py-2.75,1.4,0,7); ctx.fill(); }
+  poly([[px-8.5,py-5.5],[px+8.5,py-5.5],[px+7,py-12],[px-7,py-12]],'#2E3450','rgba(0,0,0,0.4)');
+  ctx.fillStyle='#FF00AA'; ctx.beginPath(); ctx.arc(px,py-8.7,1.8,0,7); ctx.fill();
+  poly([[px-2.8,py-12],[px+2.8,py-12],[px+2.2,py-22],[px-2.2,py-22]],'#2E3450','rgba(0,0,0,0.4)');
+  const bg=ctx.createLinearGradient(px,py-21,px,py-13);
+  bg.addColorStop(0,'#00A3FF'); bg.addColorStop(0.5,'#8348F2'); bg.addColorStop(1,'#FF00AA');
+  ctx.fillStyle=bg;
+  ctx.fillRect(px-2.9,py-16.4,5.8,1.6); ctx.fillRect(px-2.7,py-19.2,5.4,1.6);
+  ctx.fillStyle='#FF00AA'; ctx.beginPath(); ctx.arc(px,py-23,1.5,0,7); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(px,py-23,0.7,0,7); ctx.fill();
+  const sg=ctx.createLinearGradient(px,py-40,px,py-26);
+  sg.addColorStop(0,'#00A3FF'); sg.addColorStop(1,'#FF00AA');
+  ctx.fillStyle=sg; ctx.fillRect(px-1,py-40,2,13);
+}
 function heroFish(){
   heroScene(['#8FD0DE','#2E7CA8']);
   ctx.save(); ctx.translate(52,34); ctx.scale(1.05,1.05);

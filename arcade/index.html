@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ching Ching Arcade: games built on the real PLS chart</title>
-<meta name="description" content="Free origami arcade games built from the actual PLS price history. Fly it, ride it, top the leaderboards.">
+<title>Ching Ching Arcade: origami games from the PulseChain universe</title>
+<meta name="description" content="Free origami arcade games from the PulseChain universe, most built from the actual PLS price history. Fly it, ride it, defend it, top the leaderboards.">
 <meta property="og:title" content="Ching Ching Arcade">
-<meta property="og:description" content="Free origami arcade games built from the actual PLS price history.">
+<meta property="og:description" content="Free origami arcade games from the PulseChain universe, most built from the actual PLS price history.">
 <link rel="icon" type="image/svg+xml" href="/arcade/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/arcade/favicon-32.png">
 <link rel="apple-touch-icon" href="/arcade/apple-touch-icon.png">
@@ -48,7 +48,7 @@ h1 .accent { color:#E4572E; }
 </head>
 <body>
 <h1>₵HING ₵HING <span class="accent">ARCADE</span></h1>
-<div class="sub">Origami games built on the <b>real PLS chart</b>. Every peak and dip is actual price history. Free, in your browser, live leaderboards.</div>
+<div class="sub">Origami games from the PulseChain universe, most built on the <b>real PLS chart</b>. Free, in your browser, live leaderboards.</div>
 
 <div class="games">
   <a class="game" href="/moonshot/">
@@ -67,6 +67,12 @@ h1 .accent { color:#E4572E; }
     <canvas id="cvDeep" width="572" height="300"></canvas>
     <div class="gname">IN TOO <span class="accent">DEEP</span></div>
     <div class="gdesc">A tiny pufferfish over the chart-as-seabed. Tap to dart, bump the whales, dodge the sharks, and watch for one famous crab near the end.</div>
+    <span class="play">PLAY</span>
+  </a>
+  <a class="game" href="/pulse-cannon/">
+    <canvas id="cvCannon" width="572" height="300"></canvas>
+    <div class="gname">PULSE <span class="accent">CANNON</span></div>
+    <div class="gdesc">Invaders, PulseChain edition. The SEC, Interpol, the FUD and the gatekeepers march down on your tokens. One cannon, one shot in the air at a time.</div>
     <span class="play">PLAY</span>
   </a>
 </div>
@@ -182,6 +188,73 @@ function scene(c, W, H, sky){
   for (const [bx,by,br] of [[120,36,3],[128,24,2],[70,44,2.5],[240,96,3]]){
     c.beginPath(); c.arc(bx,by,br,0,7); c.stroke();
   }
+})();
+(function(){
+  const cv=document.getElementById('cvCannon'), c=cv.getContext('2d');
+  c.setTransform(2,0,0,2,0,0);
+  // night sky, no chart down here: this one is pure PulseChain
+  const g=c.createLinearGradient(0,0,0,150);
+  g.addColorStop(0,'#0A0D1E'); g.addColorStop(1,'#1B2044');
+  c.fillStyle=g; c.fillRect(0,0,286,150);
+  c.fillStyle='rgba(232,234,246,0.8)';
+  for (let i=0;i<26;i++){ c.globalAlpha=0.3+((i*37)%50)/100; c.fillRect((i*53)%286,(i*31)%92,1.5,1.5); }
+  c.globalAlpha=1;
+  // two marching rows: Interpol red notices up top, toll gates below
+  for (let i=0;i<5;i++){
+    const x=64+i*40, y=26;
+    poly(c,[[x-8,y-11],[x+8,y-11],[x+8,y+11],[x-8,y+11]],'#FDFCF8','rgba(0,0,0,0.35)');
+    poly(c,[[x-8,y-11],[x+8,y-11],[x+8,y-3],[x-8,y-3]],'#C0392B');
+    c.fillStyle='#B9B2A4';
+    c.beginPath(); c.arc(x-3.5,y+1.5,2,0,7); c.fill();
+    poly(c,[[x-6,y+7.5],[x-1,y+7.5],[x-2,y+4],[x-5.2,y+4]],'#B9B2A4');
+    c.strokeStyle='rgba(58,54,48,0.3)'; c.lineWidth=1;
+    c.beginPath(); c.moveTo(x+1,y+2); c.lineTo(x+6,y+2);
+    c.moveTo(x+1,y+5); c.lineTo(x+6,y+5); c.stroke();
+  }
+  for (let i=0;i<5;i++){
+    const x=64+i*40, y=58;   // little garden gates: posts, arched pickets, rails
+    c.fillStyle='#8A5A2B'; c.fillRect(x-12,y-8,2.6,18); c.fillRect(x+9.4,y-8,2.6,18);
+    for (let p=-2;p<=2;p++){
+      const px2=x+p*3.7, h=8-Math.abs(p)*1.6;
+      poly(c,[[px2-1.4,y+10],[px2+1.4,y+10],[px2+1.4,y-h],[px2,y-h-2.4],[px2-1.4,y-h]],'#A87441','rgba(0,0,0,0.25)');
+    }
+    c.fillStyle='#8A5A2B'; c.fillRect(x-9,y,18,2.2); c.fillRect(x-9,y+5,18,2.2);
+    c.fillStyle='#F2C14E'; c.fillRect(x+3,y+1,5,4.5);
+  }
+  // token shields
+  const toks=[['#00A3FF','#8348F2'],['#8348F2','#FF00AA'],['#FF7A3D','#FF00AA'],['#3FA35E','#3FA35E']];
+  toks.forEach((t,i)=>{
+    const x=70+i*50, y=104;
+    c.fillStyle='#F5F2E8'; c.beginPath(); c.arc(x,y,11,0,7); c.fill();
+    const rg=c.createLinearGradient(x-11,y,x+11,y);
+    rg.addColorStop(0,t[0]); rg.addColorStop(1,t[1]);
+    c.strokeStyle=rg; c.lineWidth=3;
+    c.beginPath(); c.arc(x,y,9,0,7); c.stroke();
+  });
+  // ground and the tracked pulse tank
+  c.fillStyle='#232848'; c.fillRect(0,140,286,10);
+  const px=143, py=140;
+  c.fillStyle='#22263B';
+  c.beginPath(); c.moveTo(px-15,py); c.lineTo(px+15,py);
+  c.arc(px+15,py-3.75,3.75,Math.PI/2,-Math.PI/2,true);
+  c.lineTo(px-15,py-7.5);
+  c.arc(px-15,py-3.75,3.75,-Math.PI/2,Math.PI/2,true);
+  c.closePath(); c.fill();
+  c.fillStyle='#4A5178';
+  for (const wx of [-9.5,0,9.5]){ c.beginPath(); c.arc(px+wx,py-3.75,1.9,0,7); c.fill(); }
+  poly(c,[[px-11.5,py-7.5],[px+11.5,py-7.5],[px+9.5,py-16.5],[px-9.5,py-16.5]],'#2E3450','rgba(0,0,0,0.4)');
+  c.fillStyle='#FF00AA'; c.beginPath(); c.arc(px,py-12,2.5,0,7); c.fill();
+  poly(c,[[px-3.9,py-16.5],[px+3.9,py-16.5],[px+3,py-30],[px-3,py-30]],'#2E3450','rgba(0,0,0,0.4)');
+  const bg=c.createLinearGradient(px,py-29,px,py-18);
+  bg.addColorStop(0,'#00A3FF'); bg.addColorStop(0.5,'#8348F2'); bg.addColorStop(1,'#FF00AA');
+  c.fillStyle=bg;
+  c.fillRect(px-4,py-22.5,8,2.2); c.fillRect(px-3.7,py-26.5,7.4,2.2);
+  c.fillStyle='#FF00AA'; c.beginPath(); c.arc(px,py-31.5,2.1,0,7); c.fill();
+  c.fillStyle='#fff'; c.beginPath(); c.arc(px,py-31.5,1,0,7); c.fill();
+  // a shot on its way up
+  const sg=c.createLinearGradient(px,py-58,px,py-38);
+  sg.addColorStop(0,'#00A3FF'); sg.addColorStop(1,'#FF00AA');
+  c.fillStyle=sg; c.fillRect(px-1.5,py-58,3,20);
 })();
 </script>
 </body>
