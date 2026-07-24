@@ -142,6 +142,11 @@ body {
   #turtle .fl2 { animation-delay:-0.9s; }
   @keyframes turtlebob { from { translate:0 0; } to { translate:0 -7px; } }
   #turtle svg { animation:turtlebob 4s ease-in-out infinite alternate; }
+  /* kelp sways from its rooted base: skew keeps the sand end planted */
+  @keyframes kelpsway { from { transform:skewX(-4deg); } to { transform:skewX(4deg); } }
+  #floor .kelp path { animation:kelpsway 5s ease-in-out infinite alternate; transform-box:fill-box; transform-origin:bottom center; }
+  #floor .kelp path:nth-child(2) { animation-duration:6.4s; animation-delay:-2.2s; }
+  #floor .kelp path:nth-child(3) { animation-duration:5.7s; animation-delay:-3.6s; }
 }
 </style>
 </head>
@@ -152,7 +157,7 @@ body {
     <!-- sand -->
     <path d="M0,150 L0,110 Q150,96 300,108 Q500,122 700,104 Q950,88 1200,106 L1200,150 Z" fill="#D8C99B" opacity="0.5"/>
     <!-- kelp and coral silhouettes, echoing the app's coral backdrop -->
-    <g fill="#1E5E46" opacity="0.5">
+    <g class="kelp" fill="#1E5E46" opacity="0.5">
       <path d="M120,112 q-8,-30 4,-58 q10,-24 2,-44 l10,0 q10,26 -2,50 q-10,26 0,52 Z"/>
       <path d="M145,114 q6,-24 -2,-46 q-7,-18 1,-36 l9,0 q-7,20 1,40 q8,22 0,42 Z"/>
       <path d="M1020,104 q-8,-26 3,-50 q9,-20 2,-40 l10,0 q9,22 -2,44 q-9,22 -1,46 Z"/>
@@ -521,7 +526,10 @@ function patternOverlay(clipId, pattern, vw, vh, seed){
       const R = w2 => `C ${cx+s2+w2},${y2} ${cx+s1+w2},${y1} ${cx+wTop/2},${y0}`;
       return `<path d="M ${cx-wTop/2},${y0} ${L(wTop/2)} L ${cx+s3+wBot/2},${y3} ${R(wTop/2)} Z"/>`;
     }).join('');
-    return `<g clip-path="url(#${clipId})" fill="rgba(16,42,72,0.18)" transform="rotate(-8 ${vw/2} ${vh/2})">${bands}</g>`;
+    // clip on the outer group, rotate on the inner: a transform on the same
+    // element would tilt the clip region with it and let stripes leak past
+    // the body outline
+    return `<g clip-path="url(#${clipId})"><g fill="rgba(16,42,72,0.18)" transform="rotate(-8 ${vw/2} ${vh/2})">${bands}</g></g>`;
   }
   if (pattern === 'spots'){
     const pts = [[0.3,0.38],[0.5,0.6],[0.62,0.3],[0.42,0.22],[0.22,0.62],[0.68,0.55]];
