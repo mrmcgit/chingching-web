@@ -203,7 +203,7 @@ body {
       </label>
     </div>
     <div class="sliderGroup" title="Slow to fast">
-      <input id="speedSlider" type="range" min="40" max="250" step="10" value="100" aria-label="Swim speed">
+      <input id="speedSlider" type="range" min="40" max="160" step="10" value="100" aria-label="Swim speed">
       <label><span>&#128034;</span><span class="mid">&#10231;</span><span>&#9889;</span></label>
     </div>
     <button id="refreshBtn" class="iconbtn" title="Refresh">&#8635;</button>
@@ -281,7 +281,7 @@ function attachLogoChain(img, t){
 
 let FISH_LIMIT = 20;                   // 10 gainers + 10 losers by default; the slider tunes it
 let GAIN_BIAS = 0.5;                   // 0 = all losers, 0.5 = balanced, 1 = all gainers
-let SPEED = 1;                         // swim-speed multiplier, 0.4 (lazy) to 2.5 (frantic)
+let SPEED = 1;                         // swim-speed multiplier, 0.4 (lazy) to 1.6 (brisk)
 let SIZE_SCALE = 1;                    // fish-size multiplier, 0.6 to 1.4
 let PERIOD = 'h24';                    // movement window: h1/h6/h24 from DexScreener, d7..d90 from the subgraph
 const DAY_PERIODS = { d7:7, d30:30, d60:60, d90:90 };
@@ -505,11 +505,23 @@ function tokenLook(addr){
 }
 // Dark translucent markings read on every base color; coordinates scale to
 // each asset's own viewBox.
-function patternOverlay(clipId, pattern, vw, vh){
+function patternOverlay(clipId, pattern, vw, vh, seed){
+  let sd = (seed || 1) >>> 0;
+  const rnd = ()=> ((sd = (sd*1664525 + 1013904223) >>> 0) / 4294967296);
   if (pattern === 'stripes'){
-    const w = vw*0.07;
-    return `<g clip-path="url(#${clipId})" fill="rgba(16,42,72,0.18)" transform="rotate(-8 ${vw/2} ${vh/2})">` +
-      [0.16,0.34,0.52,0.68].map(fx=>`<rect x="${vw*fx}" y="${-vh*0.2}" width="${w}" height="${vh*1.4}"/>`).join('') + `</g>`;
+    // tiger-style bands: each stripe sways with its own bezier curve and
+    // tapers toward the belly; the sway is seeded per token so a fish's
+    // stripes are organic but identical every visit
+    const bands = [0.16,0.34,0.52,0.68].map(fx=>{
+      const cx = vw*fx + (rnd()-0.5)*vw*0.03;
+      const wTop = vw*(0.06 + rnd()*0.03), wBot = wTop*(0.4 + rnd()*0.25);
+      const s1 = (rnd()-0.5)*vw*0.18, s2 = (rnd()-0.5)*vw*0.18, s3 = (rnd()-0.5)*vw*0.10;
+      const y0 = -vh*0.2, y3 = vh*1.2, y1 = vh*0.25, y2 = vh*0.7;
+      const L = w2 => `C ${cx+s1-w2},${y1} ${cx+s2-w2},${y2} ${cx+s3-wBot/2},${y3}`;
+      const R = w2 => `C ${cx+s2+w2},${y2} ${cx+s1+w2},${y1} ${cx+wTop/2},${y0}`;
+      return `<path d="M ${cx-wTop/2},${y0} ${L(wTop/2)} L ${cx+s3+wBot/2},${y3} ${R(wTop/2)} Z"/>`;
+    }).join('');
+    return `<g clip-path="url(#${clipId})" fill="rgba(16,42,72,0.18)" transform="rotate(-8 ${vw/2} ${vh/2})">${bands}</g>`;
   }
   if (pattern === 'spots'){
     const pts = [[0.3,0.38],[0.5,0.6],[0.62,0.3],[0.42,0.22],[0.22,0.62],[0.68,0.55]];
@@ -523,7 +535,7 @@ let uid = 0;
 function fishSVG(t){
   // bodies live in a viewBox of -60..60 x -40..40; width:height stays 1.5:1
   const isShark = SHARKS.has(t.addr);
-  const look = tokenLook(t.addr);
+  const look = t.look || tokenLook(t.addr);
   const g = `grad${++uid}`, clip = `clip${uid}`;
   const defs = `<defs><linearGradient id="${g}" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="${look.a}"/>
@@ -547,7 +559,7 @@ function fishSVG(t){
   // every other fish is one of the app's six assets, in this token's colors
   const S = APP_FISH[look.shape];
   const body = S.body.replaceAll('__GRAD__', `url(#${g})`).replaceAll('__BELLY__', look.b);
-  const inner = `${body}${patternOverlay(clip, look.pattern, S.vw, S.vh)}${S.eye}`;
+  const inner = `${body}${patternOverlay(clip, look.pattern, S.vw, S.vh, hashOf(t.addr))}${S.eye}`;
   // four of the six assets natively face left; pre-mirror those so every
   // body faces right and the swim flip logic stays uniform
   const oriented = S.mir ? `<g transform="translate(${S.vw},0) scale(-1,1)">${inner}</g>` : inner;
@@ -567,6 +579,8 @@ function spawnFish(tokens){
     const isShark = SHARKS.has(t.addr);
     const w = isShark ? size*1.65 : size*1.5;
     const h = isShark ? size*1.05 : size;
+    const cached = logoLookCache.get(t.addr);
+    if (cached) t.look = { ...tokenLook(t.addr), a: cached.a, b: cached.b, pattern: cached.pattern };
     const el = document.createElement('div');
     el.className = 'fish';
     // body wrapper carries the flip, so the logo turns WITH the fish
@@ -604,6 +618,7 @@ function spawnFish(tokens){
     newLeg(fish, true);
     attachDrag(fish);
     fishes.push(fish);
+    enrichLook(fish);
   });
 }
 
@@ -861,7 +876,10 @@ try {
   const saved = JSON.parse(localStorage.getItem('oceanomics_sliders') || '{}');
   if (saved.fish){ FISH_LIMIT = saved.fish; document.getElementById('fishSlider').value = saved.fish; }
   if (saved.bias != null){ GAIN_BIAS = saved.bias / 100; document.getElementById('biasSlider').value = saved.bias; }
-  if (saved.speed){ SPEED = saved.speed / 100; document.getElementById('speedSlider').value = saved.speed; }
+  if (saved.speed){
+    const sp = Math.min(160, Math.max(40, saved.speed));   // old saves may exceed the new range
+    SPEED = sp / 100; document.getElementById('speedSlider').value = sp;
+  }
   if (saved.size){
     const sz = Math.min(140, Math.max(60, saved.size));   // old saves may exceed the new range
     SIZE_SCALE = sz / 100; document.getElementById('sizeSlider').value = sz;
@@ -976,6 +994,97 @@ async function snapshotLogo(f){
     if (bmp) return bmp;
   }
   return null;
+}
+/* =====================================================================
+   LOGO-DRIVEN LOOKS — the token's logo dictates its fish's colors and
+   pattern: dominant hue becomes the body, a pale mix of it the belly,
+   and the number of distinct hues picks plain, stripes, or spots.
+   Sampling needs CORS (the same chain the snapshot uses); tokens whose
+   logos cannot be read keep their address-hash look. Successful looks
+   persist so identities stay stable across visits.
+   ===================================================================== */
+let logoLookCache = new Map();
+try { logoLookCache = new Map(JSON.parse(localStorage.getItem('oceanomics_looks') || '[]')); } catch(e){}
+let looksSaveT = null;
+function saveLooks(){
+  clearTimeout(looksSaveT);
+  looksSaveT = setTimeout(()=>{
+    try { localStorage.setItem('oceanomics_looks', JSON.stringify([...logoLookCache].slice(-400))); } catch(e){}
+  }, 800);
+}
+function analyzeLogo(bmp){
+  try {
+    const c = document.createElement('canvas'); c.width = c.height = 24;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(bmp, 0, 0, 24, 24);
+    const d = x.getImageData(0, 0, 24, 24).data;
+    const bins = new Map();   // 30-degree hue bin -> [count, rSum, gSum, bSum]
+    let total = 0;
+    for (let i = 0; i < d.length; i += 4){
+      const r = d[i], g = d[i+1], b = d[i+2], a = d[i+3];
+      if (a < 128) continue;
+      const mx = Math.max(r,g,b)/255, mn = Math.min(r,g,b)/255;
+      const l = (mx+mn)/2, sat = mx === mn ? 0 : (mx-mn)/(1-Math.abs(2*l-1));
+      if (l < 0.12 || l > 0.94 || sat < 0.18) continue;   // skip blacks, whites, greys
+      let h;
+      const rf = r/255, gf = g/255, bf = b/255;
+      if (mx === rf) h = ((gf-bf)/(mx-mn)) % 6;
+      else if (mx === gf) h = (bf-rf)/(mx-mn) + 2;
+      else h = (rf-gf)/(mx-mn) + 4;
+      h = (h*60 + 360) % 360;
+      const bin = Math.round(h/30) % 12;
+      const e = bins.get(bin) || [0,0,0,0];
+      e[0]++; e[1]+=r; e[2]+=g; e[3]+=b;
+      bins.set(bin, e);
+      total++;
+    }
+    if (!total || total < 12) return null;               // logo is basically monochrome art
+    const ranked = [...bins.values()].sort((p,q)=> q[0]-p[0]);
+    const [n, rS, gS, bS] = ranked[0];
+    // normalize the dominant color into the tank's pleasant range:
+    // keep the logo's hue but enforce paper-craft saturation and lightness
+    const rAvg = rS/n, gAvg = gS/n, bAvg = bS/n;
+    const mxA = Math.max(rAvg,gAvg,bAvg)/255, mnA = Math.min(rAvg,gAvg,bAvg)/255;
+    let hA = 0;
+    if (mxA !== mnA){
+      const rf = rAvg/255, gf = gAvg/255, bf = bAvg/255;
+      if (mxA === rf) hA = ((gf-bf)/(mxA-mnA)) % 6;
+      else if (mxA === gf) hA = (bf-rf)/(mxA-mnA) + 2;
+      else hA = (rf-gf)/(mxA-mnA) + 4;
+      hA = (hA*60 + 360) % 360;
+    }
+    const lA0 = (mxA+mnA)/2;
+    const sA0 = mxA === mnA ? 0 : (mxA-mnA)/(1-Math.abs(2*lA0-1));
+    const sA = Math.max(sA0, 0.55);
+    const lA = Math.min(0.62, Math.max(0.45, lA0));
+    const body = `hsl(${Math.round(hA)},${Math.round(sA*100)}%,${Math.round(lA*100)}%)`;
+    const belly = `hsl(${Math.round(hA)},${Math.round(sA*70)}%,${Math.round(Math.min(93, lA*100+32))}%)`;
+    const hues = ranked.filter(e => e[0] >= total*0.08).length;
+    const pattern = hues <= 1 ? 'plain' : hues === 2 ? 'stripes' : 'spots';
+    return { a: body, b: belly, pattern };
+  } catch(e){ return null; }
+}
+async function enrichLook(f2){
+  if (SHARKS.has(f2.t.addr)) return;
+  let look = logoLookCache.get(f2.t.addr);
+  if (look === undefined){
+    const bmp = f2._snapLogo || await snapshotLogo(f2);
+    if (bmp) f2._snapLogo = bmp;
+    look = bmp ? analyzeLogo(bmp) : null;
+    logoLookCache.set(f2.t.addr, look);   // null is cached too: no re-fetch storms
+    saveLooks();
+  }
+  if (look && f2.el.isConnected){
+    const hash = tokenLook(f2.t.addr);
+    f2.t.look = { ...hash, a: look.a, b: look.b, pattern: look.pattern };  // shape stays hash-stable
+    const svg = f2.el.querySelector('svg');
+    const tmp = document.createElement('div');
+    tmp.innerHTML = fishSVG(f2.t);
+    const ns = tmp.querySelector('svg');
+    ns.setAttribute('width', svg.getAttribute('width'));
+    ns.setAttribute('height', svg.getAttribute('height'));
+    svg.replaceWith(ns);
+  }
 }
 function svgToImage(svgEl){
   return new Promise(res => {
