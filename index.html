@@ -176,7 +176,7 @@
   .input-section button:hover { opacity: 0.85; }
 
   /* ---------- site menu (hamburger) ---------- */
-  .site-nav { position:relative; flex-shrink:0; }
+  .site-nav { position:fixed; top:14px; left:14px; z-index:100; }
   .site-nav-btn {
     width:34px; height:34px; border:1px solid rgba(255,255,255,0.14); border-radius:9px;
     background:rgba(255,255,255,0.05); color:#e8e8e8; cursor:pointer; font-size:15px; line-height:1;
@@ -194,6 +194,14 @@
 </style>
 </head>
 <body>
+<div class="site-nav">
+  <button class="site-nav-btn" id="siteNavBtn" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  <nav class="site-nav-menu hidden" id="siteNavMenu">
+    <a href="/arcade/">Arcade</a>
+    <a href="/aquarium/">Oceanomics</a>
+    <a href="/" class="here">Portfolio</a>
+  </nav>
+</div>
 
 <div class="card" id="card">
   <div class="app-banner" id="appBanner" style="display:none">
@@ -207,14 +215,6 @@
   </div>
   <div class="header">
     <div class="header-left">
-      <div class="site-nav">
-        <button class="site-nav-btn" id="siteNavBtn" aria-label="Menu" aria-expanded="false">&#9776;</button>
-        <nav class="site-nav-menu hidden" id="siteNavMenu">
-          <a href="/arcade/">Arcade</a>
-          <a href="/aquarium/">Oceanomics</a>
-          <a href="/" class="here">Portfolio</a>
-        </nav>
-      </div>
       <img class="logo" src="logo.png" alt="Ching Ching" width="36" height="36">
       <div class="wallet-id" onclick="toggleWalletInput()" title="Change wallet">
         <div>
