@@ -6,7 +6,7 @@
 <title>PulseChain Oceanomics | Ching Ching</title>
 <meta name="description" content="The PulseChain market as a living aquarium: today's top gainers and losers swim as fish, sized by how hard they moved. From the Ching Ching app.">
 <meta property="og:title" content="PulseChain Oceanomics">
-<meta property="og:description" content="Today's top PulseChain movers, as fish. Big fish moved hard. Sharks are the majors.">
+<meta property="og:description" content="Today's top PulseChain movers, as fish. Big fish moved hard. Sharks are the cores.">
 <link rel="icon" type="image/svg+xml" href="/arcade/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/arcade/favicon-32.png">
 <link rel="apple-touch-icon" href="/arcade/apple-touch-icon.png">
@@ -160,7 +160,7 @@ body {
   </div>
   <div id="title">
     <h1>PulseChain <span class="accent">OCEANOMICS</span></h1>
-    <div class="sub">Today's top movers, as fish. Big fish moved hard. Sharks are the majors.</div>
+    <div class="sub">Today's top movers, as fish. Big fish moved hard. Sharks are the cores.</div>
   </div>
   <div id="controls">
     <div class="sliderGroup" title="Fewer or more fish">
@@ -764,7 +764,7 @@ document.getElementById('speedSlider').addEventListener('input', e => {
 document.getElementById('linkBtn').addEventListener('click', async ()=>{
   const data = {
     title: 'PulseChain Oceanomics',
-    text: "The PulseChain market as a living aquarium. Big fish moved hard, sharks are the majors.",
+    text: "The PulseChain market as a living aquarium. Big fish moved hard, sharks are the cores.",
     url: location.href,
   };
   if (navigator.share){
@@ -913,7 +913,7 @@ document.getElementById('snapBtn').addEventListener('click', async ()=>{
     if (!blob) throw new Error('no blob');
     statusEl.hidden = true;
     const file = new File([blob], 'oceanomics.png', { type:'image/png' });
-    const text = 'The PulseChain market as a living aquarium. Big fish moved hard, sharks are the majors. 🦈\n\nhttps://chingching.xyz/aquarium/';
+    const text = 'The PulseChain market as a living aquarium. Big fish moved hard, sharks are the cores. 🦈\n\nhttps://chingching.xyz/aquarium/';
     if (navigator.canShare && navigator.canShare({ files:[file] })){
       try { await navigator.share({ files:[file], text }); snapping = false; return; }
       catch(e){ if (e.name === 'AbortError'){ snapping = false; return; } }
