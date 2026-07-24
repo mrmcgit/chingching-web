@@ -110,9 +110,7 @@ body {
 .fish .chg { font-size:11px; font-weight:800; text-shadow:0 1px 1px rgba(0,0,0,0.8); }
 .fish .chg.up { color:#5BE38A; }
 .fish .chg.down { color:#FF7A7A; }
-@keyframes wiggle { from { rotate:-13deg; } to { rotate:13deg; } }
-.fish.dragging .body { animation:wiggle 0.12s linear infinite alternate; }
-@media (prefers-reduced-motion: reduce){ .fish.dragging .body { animation:none; } }
+/* drag wiggle is JS-driven (burst thrashing, see tickFish) */
 
 /* ---------- bubbles ---------- */
 .bubble {
@@ -281,6 +279,7 @@ const statusEl = document.getElementById('status');
 const clamp = (v,a,b)=> v<a?a:v>b?b:v;
 const rand = (a,b)=> a + Math.random()*(b-a);
 const TAU = Math.PI*2;
+const REDUCED_MOTION = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let W = innerWidth, H = innerHeight;
 // One path for every size change (resize event, or an embed that settles its
 // viewport silently): update the world AND re-scatter the school, because any
@@ -531,7 +530,7 @@ function spawnFish(tokens){
     const fish = {
       el, t, w, h,
       x: rand(w/2, W - w/2), y: rand(H*0.14, H*0.86),
-      fx: 0, fy: 0, dur: 1, t0: 0, facing: 1, flip: 1, dragging: false,
+      fx: 0, fy: 0, dur: 1, t0: 0, facing: 1, flip: 1, dragging: false, wig: 0,
     };
     newLeg(fish, true);
     attachDrag(fish);
@@ -553,7 +552,24 @@ const easeInOut = p => p<0.5 ? 2*p*p : 1-((-2*p+2)**2)/2;
 
 function tickFish(now){
   for (const f of fishes){
-    if (f.dragging) continue;
+    if (f.dragging){
+      // a held fish thrashes in bursts: a violent flap, a beat of stillness,
+      // another flap, like something that would rather be swimming
+      if (!REDUCED_MOTION){
+        const tg = now/1000 - (f.grabAt || 0);
+        // cos^2 so the first flap lands the instant it is grabbed (panic!),
+        // then thrash-rest cycles for as long as it is held
+        const burst = Math.pow(Math.cos(tg*2.4), 2);
+        f.wig = 14 * burst * Math.sin(tg*19 + f.t0);
+        render(f);
+      }
+      continue;
+    }
+    // released fish settle instead of snapping straight
+    if (f.wig !== 0){
+      f.wig *= 0.86;
+      if (Math.abs(f.wig) < 0.3) f.wig = 0;
+    }
     let p = (now - f.t0) / f.dur;
     if (p >= 1){ newLeg(f); p = 0; }
     const e = easeInOut(clamp(p, 0, 1));
@@ -564,7 +580,8 @@ function tickFish(now){
   }
 }
 function render(f){
-  f.el.style.transform = `translate(${(f.x - f.w/2).toFixed(1)}px, ${(f.y - f.h/2).toFixed(1)}px)`;
+  const rot = f.wig ? ` rotate(${f.wig.toFixed(2)}deg)` : '';
+  f.el.style.transform = `translate(${(f.x - f.w/2).toFixed(1)}px, ${(f.y - f.h/2).toFixed(1)}px)`+rot;
   f.el.querySelector('.bodywrap').style.transform = `scaleX(${f.flip.toFixed(3)})`;
 }
 
@@ -572,6 +589,7 @@ function attachDrag(fish){
   fish.el.addEventListener('pointerdown', e => {
     e.preventDefault();
     fish.dragging = true;
+    fish.grabAt = performance.now()/1000;
     fish.el.classList.add('dragging');
     fish.el.setPointerCapture(e.pointerId);
     const move = ev => {
