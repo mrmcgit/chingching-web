@@ -51,6 +51,17 @@ body {
   font-size:17px; color:rgba(240,246,250,0.9); white-space:nowrap; line-height:1;
 }
 .sliderGroup label .mid { font-size:12px; opacity:0.5; }
+#periodPills {
+  display:flex; gap:3px; padding:6px; border-radius:10px;
+  background:rgba(10,52,90,0.45); border:1px solid rgba(255,255,255,0.35);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+}
+#periodPills .pp {
+  border:none; background:transparent; color:rgba(240,246,250,0.7);
+  font:800 11px -apple-system,'Helvetica Neue',sans-serif; padding:7px 8px;
+  border-radius:7px; cursor:pointer; letter-spacing:0.03em;
+}
+#periodPills .pp.on { background:#FFD166; color:#123B63; }
 .sliderGroup input { width:150px; accent-color:#FFD166; }
 .iconbtn {
   width:38px; height:38px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
@@ -110,6 +121,7 @@ body {
 .fish .chg { font-size:11px; font-weight:800; text-shadow:0 1px 1px rgba(0,0,0,0.8); }
 .fish .chg.up { color:#5BE38A; }
 .fish .chg.down { color:#FF7A7A; }
+.fish .chg.flat { color:#C9CEE8; }
 /* drag wiggle is JS-driven (burst thrashing, see tickFish) */
 
 /* ---------- bubbles ---------- */
@@ -161,6 +173,9 @@ body {
     <div class="sub">Today's top movers, as fish. Big fish moved hard. Sharks are the cores.</div>
   </div>
   <div id="controls">
+    <div id="periodPills" title="Movement window">
+      <button class="pp" data-p="h1">1H</button><button class="pp" data-p="h6">6H</button><button class="pp on" data-p="h24">24H</button><button class="pp" data-p="d7">7D</button><button class="pp" data-p="d30">30D</button><button class="pp" data-p="d60">60D</button><button class="pp" data-p="d90">90D</button>
+    </div>
     <div class="sliderGroup" title="Fewer or more fish">
       <input id="fishSlider" type="range" min="8" max="40" step="2" value="20" aria-label="How many fish">
       <label><span>&#128031;</span><span class="mid">&#10231;</span><span>&#128031;&#128031;&#128031;</span></label>
@@ -253,6 +268,9 @@ function attachLogoChain(img, t){
 let FISH_LIMIT = 20;                   // 10 gainers + 10 losers by default; the slider tunes it
 let GAIN_BIAS = 0.5;                   // 0 = all losers, 0.5 = balanced, 1 = all gainers
 let SPEED = 1;                         // swim-speed multiplier, 0.4 (lazy) to 2.5 (frantic)
+let PERIOD = 'h24';                    // movement window: h1/h6/h24 from DexScreener, d7..d90 from the subgraph
+const DAY_PERIODS = { d7:7, d30:30, d60:60, d90:90 };
+let histCache = {};                    // period -> Map(addr -> pct), rebuilt on refresh
 const MIN_LIQUIDITY = 50;
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
 // The app's shark list: HEX, WPLS, PLSX, INC (PRVX rarely charts; kept anyway)
@@ -334,6 +352,41 @@ async function fetchDexData(addrs){
   return best;
 }
 
+// The change % for the current window: hour windows ride the pair data we
+// already have; day windows come from PulseX day history (null = the token
+// has no data that far back and sits this window out).
+function pctOf(p, addr){
+  if (PERIOD in DAY_PERIODS){
+    const m = histCache[PERIOD];
+    return m && m.has(addr) ? m.get(addr) : null;
+  }
+  const chg = p.priceChange || {};
+  const v = +chg[PERIOD];
+  return Number.isFinite(v) ? v : (PERIOD === 'h24' ? 0 : null);
+}
+async function ensurePeriodData(){
+  if (!(PERIOD in DAY_PERIODS) || histCache[PERIOD] || !lastBest) return;
+  const days = DAY_PERIODS[PERIOD];
+  const target = (Math.floor(Date.now()/86400000) - days) * 86400;
+  const ids = [...lastBest.keys()].map(a=>`"${a}"`).join(',');
+  const query = `{tokenDayDatas(first:1000, orderBy:date, orderDirection:desc, where:{token_in:[${ids}], date_gte:${target - 3*86400}, date_lte:${target}}){token{id} date priceUSD}}`;
+  const m = new Map();
+  try {
+    const r = await fetch(SUBGRAPH, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ query }) });
+    const j = await r.json();
+    const seen = new Set();
+    for (const row of (j && j.data && j.data.tokenDayDatas || [])){
+      const a = row.token.id.toLowerCase();
+      if (seen.has(a)) continue;                     // desc order: first hit is closest to target
+      seen.add(a);
+      const old = parseFloat(row.priceUSD);
+      const pair = lastBest.get(a);
+      const cur = pair ? parseFloat(pair.priceUsd) : NaN;
+      if (old > 0 && Number.isFinite(cur)) m.set(a, (cur - old)/old*100);
+    }
+  } catch(e){}
+  histCache[PERIOD] = m;
+}
 function pickMovers(best){
   const seen = new Set();
   const clean = [];
@@ -342,7 +395,6 @@ function pickMovers(best){
     const name = (p.baseToken.name || '').trim();
     const symLower = sym.toLowerCase(), nameLower = name.toLowerCase();
     const liq = p.liquidity && p.liquidity.usd || 0;
-    const chg = p.priceChange || {};
     if (!sym || liq < MIN_LIQUIDITY) continue;
     if (seen.has(symLower)) continue;
     if (SUSPICIOUS.some(k => symLower.includes(k) || nameLower.includes(k))) continue;
@@ -351,7 +403,7 @@ function pickMovers(best){
       addr,
       symbol: symLower === 'wpls' ? 'PLS' : sym,   // the app shows WPLS as PLS
       price: parseFloat(p.priceUsd) || 0,
-      h24: Number.isFinite(+chg.h24) ? +chg.h24 : 0,
+      chg: pctOf(p, addr),                          // the selected window's move, null = no data
       liq,
       infoLogo: p.info && p.info.imageUrl || null,   // claimed pair artwork, free with the batch
     });
@@ -359,8 +411,8 @@ function pickMovers(best){
   // The majors patrol the tank no matter what the market did today (the app
   // force-refreshes its key tokens for the same reason). Movers fill the rest,
   // and GAIN_BIAS skews the mix from all-losers through balanced to all-gainers.
-  const sharks = clean.filter(t => SHARKS.has(t.addr));
-  const rest = clean.filter(t => !SHARKS.has(t.addr)).sort((a,b)=> b.h24 - a.h24);
+  const sharks = clean.filter(t => SHARKS.has(t.addr));   // cores stay even with no history
+  const rest = clean.filter(t => !SHARKS.has(t.addr) && t.chg != null).sort((a,b)=> b.chg - a.chg);
   const slots = Math.max(2, FISH_LIMIT - sharks.length);
   const gainCount = Math.round(slots * GAIN_BIAS);
   const loseCount = slots - gainCount;
@@ -495,7 +547,7 @@ function spawnFish(tokens){
   for (const f of fishes) f.el.remove();
   fishes.length = 0;
   tokens.forEach((t, i) => {
-    const size = fishSize(t.h24);
+    const size = fishSize(t.chg || 0);
     // sharks use the app's asset proportions and its 1.2x size bump
     const isShark = SHARKS.has(t.addr);
     const w = isShark ? size*1.65 : size*1.5;
@@ -521,8 +573,10 @@ function spawnFish(tokens){
     // the label capsule
     const tag = document.createElement('div');
     tag.className = 'tag';
-    const up = t.h24 >= 0;
-    tag.innerHTML = `<span class="sym"></span><span class="chg ${up?'up':'down'}">${up?'+':''}${t.h24.toFixed(1)}%</span>`;
+    const has = t.chg != null;
+    const up = has && t.chg >= 0;
+    const cls = has ? (up ? 'up' : 'down') : 'flat';
+    tag.innerHTML = `<span class="sym"></span><span class="chg ${cls}">${has ? (up?'+':'')+t.chg.toFixed(1)+'%' : '&#8212;'}</span>`;
     tag.querySelector('.sym').textContent = t.symbol.slice(0, 8);
     el.appendChild(tag);
     tank.appendChild(el);
@@ -737,6 +791,8 @@ async function load(){
   try {
     const universe = await fetchUniverse();
     lastBest = await fetchDexData(universe);
+    histCache = {};                      // prices moved; day baselines must recompute
+    await ensurePeriodData();
     const movers = pickMovers(lastBest);
     if (!movers.length) throw new Error('no tokens');
     spawnFish(movers);
@@ -752,6 +808,10 @@ try {
   if (saved.fish){ FISH_LIMIT = saved.fish; document.getElementById('fishSlider').value = saved.fish; }
   if (saved.bias != null){ GAIN_BIAS = saved.bias / 100; document.getElementById('biasSlider').value = saved.bias; }
   if (saved.speed){ SPEED = saved.speed / 100; document.getElementById('speedSlider').value = saved.speed; }
+  if (saved.period && (saved.period in DAY_PERIODS || ['h1','h6','h24'].includes(saved.period))){
+    PERIOD = saved.period;
+    document.querySelectorAll('#periodPills .pp').forEach(x=>x.classList.toggle('on', x.dataset.p === PERIOD));
+  }
 } catch(e){}
 document.getElementById('refreshBtn').addEventListener('click', load);
 function saveSliders(){
@@ -760,8 +820,23 @@ function saveSliders(){
       fish: +document.getElementById('fishSlider').value,
       bias: +document.getElementById('biasSlider').value,
       speed: +document.getElementById('speedSlider').value,
+      period: PERIOD,
     }));
   } catch(e){}
+}
+for (const b of document.querySelectorAll('#periodPills .pp')){
+  b.addEventListener('click', async ()=>{
+    if (b.dataset.p === PERIOD) return;
+    PERIOD = b.dataset.p;
+    document.querySelectorAll('#periodPills .pp').forEach(x=>x.classList.toggle('on', x===b));
+    saveSliders();
+    if (PERIOD in DAY_PERIODS && !histCache[PERIOD]){
+      statusEl.hidden = false; statusEl.textContent = 'Reading ' + DAY_PERIODS[PERIOD] + '-day history…';
+    }
+    await ensurePeriodData();
+    statusEl.hidden = true;
+    if (lastBest) spawnFish(pickMovers(lastBest));
+  });
 }
 document.getElementById('fishSlider').addEventListener('input', e => {
   FISH_LIMIT = +e.target.value;
@@ -887,7 +962,7 @@ async function renderSnapshot(){
     if (f._snapLogo){
       // same geometry the live logo uses, derived from the fish itself so it
       // can never go stale against the drawn position
-      const ld = fishSize(f.t.h24)*0.34;
+      const ld = fishSize(f.t.chg || 0)*0.34;
       const lx = f.x, ly = f.y + f.h*0.02;
       x.save(); x.globalAlpha = 0.5;
       x.beginPath(); x.arc(lx, ly, ld/2, 0, TAU); x.clip();
@@ -906,7 +981,7 @@ async function renderSnapshot(){
     roundRect(x, cx2-capW/2, cy2-capH/2, capW, capH, capH/2); x.fill();
     x.textBaseline = 'middle';
     x.fillStyle = '#fff'; x.fillText(sym, cx2-total/2, cy2+0.5);
-    x.fillStyle = chgEl.classList.contains('up') ? '#5BE38A' : '#FF7A7A';
+    x.fillStyle = chgEl.classList.contains('up') ? '#5BE38A' : chgEl.classList.contains('down') ? '#FF7A7A' : '#C9CEE8';
     x.fillText(chg, cx2-total/2+symW+6, cy2+0.5);
   }
   // wordmark, so the PNG travels with its address
