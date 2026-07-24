@@ -27,8 +27,8 @@ body {
 /* ---------- header bar: title, sliders side by side, actions ---------- */
 #hud {
   position:fixed; top:0; left:0; right:0; z-index:40;
-  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
-  padding:calc(8px + env(safe-area-inset-top)) 14px 10px;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:calc(8px + env(safe-area-inset-top)) 12px 10px;
   background:linear-gradient(to bottom, rgba(7,34,62,0.82), rgba(7,34,62,0.5) 75%, rgba(7,34,62,0));
   pointer-events:none;
 }
@@ -37,26 +37,26 @@ body {
 #title h1 .accent { color:#FFD166; }
 #title .sub { font-size:11px; font-weight:600; color:rgba(240,246,250,0.75); margin-top:2px; text-shadow:0 1px 2px rgba(6,38,66,0.5); }
 #controls {
-  display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  display:flex; gap:6px; align-items:center; flex-wrap:wrap;
   margin-left:auto; pointer-events:auto;
 }
 .sliderGroup {
   display:flex; flex-direction:column; align-items:center; gap:2px;
-  padding:6px 12px 7px; border-radius:10px;
+  padding:5px 9px 6px; border-radius:10px;
   background:rgba(10,52,90,0.45); border:1px solid rgba(255,255,255,0.35);
   backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
 }
 .sliderGroup label {
   display:flex; justify-content:space-between; align-items:center; width:100%;
-  font-size:17px; color:rgba(240,246,250,0.9); white-space:nowrap; line-height:1;
+  height:16px; font-size:15px; color:rgba(240,246,250,0.9); white-space:nowrap; line-height:1;
 }
-.sliderGroup label .mid { font-size:12px; opacity:0.5; }
-.sliderGroup label .end { font-size:11px; font-weight:800; letter-spacing:0.04em; color:rgba(240,246,250,0.75); }
-#periodLabel { font-size:12px; font-weight:900; letter-spacing:0.08em; color:#FFD166; opacity:1; }
-.sliderGroup input { width:150px; accent-color:#FFD166; }
+.sliderGroup label .mid { font-size:11px; opacity:0.5; }
+.sliderGroup label .end { font-size:10px; font-weight:800; letter-spacing:0.03em; color:rgba(240,246,250,0.75); }
+#periodLabel { font-size:11px; font-weight:900; letter-spacing:0.06em; color:#FFD166; opacity:1; }
+.sliderGroup input { width:108px; accent-color:#FFD166; }
 .iconbtn {
-  width:38px; height:38px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
-  background:rgba(10,52,90,0.45); color:#F0F6FA; cursor:pointer; font-size:16px;
+  width:34px; height:34px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
+  background:rgba(10,52,90,0.45); color:#F0F6FA; cursor:pointer; font-size:14px;
   backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
 }
 .iconbtn:active { transform:scale(0.94); }
@@ -190,6 +190,10 @@ body {
       <input id="fishSlider" type="range" min="8" max="40" step="2" value="20" aria-label="How many fish">
       <label><span>&#128031;</span><span class="mid">&#10231;</span><span>&#128031;&#128031;&#128031;</span></label>
     </div>
+    <div class="sliderGroup" title="Smaller or bigger fish">
+      <input id="sizeSlider" type="range" min="60" max="140" step="10" value="100" aria-label="Fish size">
+      <label><span style="font-size:10px">&#128031;</span><span class="mid">&#10231;</span><span style="font-size:17px">&#128031;</span></label>
+    </div>
     <div class="sliderGroup" title="Losers, balanced, or gainers">
       <input id="biasSlider" type="range" min="0" max="100" step="10" value="50" aria-label="Losers to gainers mix">
       <label>
@@ -278,6 +282,7 @@ function attachLogoChain(img, t){
 let FISH_LIMIT = 20;                   // 10 gainers + 10 losers by default; the slider tunes it
 let GAIN_BIAS = 0.5;                   // 0 = all losers, 0.5 = balanced, 1 = all gainers
 let SPEED = 1;                         // swim-speed multiplier, 0.4 (lazy) to 2.5 (frantic)
+let SIZE_SCALE = 1;                    // fish-size multiplier, 0.6 to 1.4
 let PERIOD = 'h24';                    // movement window: h1/h6/h24 from DexScreener, d7..d90 from the subgraph
 const DAY_PERIODS = { d7:7, d30:30, d60:60, d90:90 };
 let histCache = {};                    // period -> Map(addr -> pct), rebuilt on refresh
@@ -557,7 +562,7 @@ function spawnFish(tokens){
   for (const f of fishes) f.el.remove();
   fishes.length = 0;
   tokens.forEach((t, i) => {
-    const size = fishSize(t.chg || 0);
+    const size = fishSize(t.chg || 0) * SIZE_SCALE;
     // sharks use the app's asset proportions and its 1.2x size bump
     const isShark = SHARKS.has(t.addr);
     const w = isShark ? size*1.65 : size*1.5;
@@ -857,6 +862,10 @@ try {
   if (saved.fish){ FISH_LIMIT = saved.fish; document.getElementById('fishSlider').value = saved.fish; }
   if (saved.bias != null){ GAIN_BIAS = saved.bias / 100; document.getElementById('biasSlider').value = saved.bias; }
   if (saved.speed){ SPEED = saved.speed / 100; document.getElementById('speedSlider').value = saved.speed; }
+  if (saved.size){
+    const sz = Math.min(140, Math.max(60, saved.size));   // old saves may exceed the new range
+    SIZE_SCALE = sz / 100; document.getElementById('sizeSlider').value = sz;
+  }
   if (saved.period && (saved.period in DAY_PERIODS || ['h1','h6','h24'].includes(saved.period))){
     PERIOD = saved.period;
     const idx = ['h1','h6','h24','d7','d30','d60','d90'].indexOf(PERIOD);
@@ -871,6 +880,7 @@ function saveSliders(){
       fish: +document.getElementById('fishSlider').value,
       bias: +document.getElementById('biasSlider').value,
       speed: +document.getElementById('speedSlider').value,
+      size: +document.getElementById('sizeSlider').value,
       period: PERIOD,
     }));
   } catch(e){}
@@ -903,6 +913,11 @@ periodSlider.addEventListener('change', ()=>{
 document.getElementById('fishSlider').addEventListener('input', e => {
   FISH_LIMIT = +e.target.value;
   if (lastBest) spawnFish(pickMovers(lastBest));   // instant re-pick, no refetch
+  saveSliders();
+});
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  SIZE_SCALE = +e.target.value / 100;
+  if (lastBest) spawnFish(pickMovers(lastBest));   // rebuild at the new scale
   saveSliders();
 });
 document.getElementById('biasSlider').addEventListener('input', e => {
@@ -1024,7 +1039,7 @@ async function renderSnapshot(){
     if (f._snapLogo){
       // same geometry the live logo uses, derived from the fish itself so it
       // can never go stale against the drawn position
-      const ld = fishSize(f.t.chg || 0)*0.34;
+      const ld = fishSize(f.t.chg || 0) * SIZE_SCALE * 0.34;
       const lx = f.x, ly = f.y + f.h*0.02;
       x.save(); x.globalAlpha = 0.5;
       x.beginPath(); x.arc(lx, ly, ld/2, 0, TAU); x.clip();
