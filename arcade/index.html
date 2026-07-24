@@ -44,9 +44,34 @@ h1 .accent { color:#E4572E; }
 }
 .foot { margin-top:40px; font-size:12px; color:rgba(58,54,48,0.45); text-align:center; line-height:1.7; }
 .foot a { color:#E4572E; font-weight:700; text-decoration:none; }
+
+/* ---------- site menu (hamburger) ---------- */
+.site-nav { position:fixed; top:14px; left:14px; z-index:50; }
+.site-nav-btn {
+  width:38px; height:38px; border:1px solid rgba(58,54,48,0.2); cursor:pointer;
+  background:#FBF8F1; color:#3A3630; font-size:16px; box-shadow:0 3px 0 rgba(58,54,48,0.15);
+}
+.site-nav-btn:active { transform:translateY(2px); box-shadow:none; }
+.site-nav-menu {
+  position:absolute; top:44px; left:0; min-width:156px; padding:6px;
+  background:#FFFEFA; border:1px solid rgba(58,54,48,0.18);
+  box-shadow:0 12px 32px rgba(58,54,48,0.25);
+}
+.site-nav-menu a { display:block; padding:9px 12px; color:#3A3630; text-decoration:none; font-weight:800; font-size:13px; }
+.site-nav-menu a:hover { background:#F2EDE0; }
+.site-nav-menu a.here { color:#E4572E; }
+.site-nav-menu.hidden { display:none; }
 </style>
 </head>
 <body>
+<div class="site-nav">
+  <button class="site-nav-btn" id="siteNavBtn" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  <nav class="site-nav-menu hidden" id="siteNavMenu">
+    <a href="/arcade/" class="here">Arcade</a>
+    <a href="/aquarium/">Oceanomics</a>
+    <a href="/">Portfolio</a>
+  </nav>
+</div>
 <h1>₵HING ₵HING <span class="accent">ARCADE</span></h1>
 <div class="sub">Origami games from the PulseChain universe, most built on the <b>real PLS chart</b>. Free, in your browser, live leaderboards.</div>
 
@@ -255,6 +280,13 @@ function scene(c, W, H, sky){
   const sg=c.createLinearGradient(px,py-58,px,py-38);
   sg.addColorStop(0,'#00A3FF'); sg.addColorStop(1,'#FF00AA');
   c.fillStyle=sg; c.fillRect(px-1.5,py-58,3,20);
+})();
+</script>
+<script>
+(function(){
+  const b = document.getElementById('siteNavBtn'), m = document.getElementById('siteNavMenu');
+  b.addEventListener('click', e => { e.stopPropagation(); const open = m.classList.toggle('hidden') === false; b.setAttribute('aria-expanded', open); });
+  document.addEventListener('click', () => { m.classList.add('hidden'); b.setAttribute('aria-expanded', 'false'); });
 })();
 </script>
 </body>
