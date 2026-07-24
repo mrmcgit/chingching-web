@@ -728,19 +728,38 @@ async function load(){
   }
   loading = false;
 }
+// the tank remembers how you like it
+try {
+  const saved = JSON.parse(localStorage.getItem('oceanomics_sliders') || '{}');
+  if (saved.fish){ FISH_LIMIT = saved.fish; document.getElementById('fishSlider').value = saved.fish; }
+  if (saved.bias != null){ GAIN_BIAS = saved.bias / 100; document.getElementById('biasSlider').value = saved.bias; }
+  if (saved.speed){ SPEED = saved.speed / 100; document.getElementById('speedSlider').value = saved.speed; }
+} catch(e){}
 document.getElementById('refreshBtn').addEventListener('click', load);
+function saveSliders(){
+  try {
+    localStorage.setItem('oceanomics_sliders', JSON.stringify({
+      fish: +document.getElementById('fishSlider').value,
+      bias: +document.getElementById('biasSlider').value,
+      speed: +document.getElementById('speedSlider').value,
+    }));
+  } catch(e){}
+}
 document.getElementById('fishSlider').addEventListener('input', e => {
   FISH_LIMIT = +e.target.value;
   if (lastBest) spawnFish(pickMovers(lastBest));   // instant re-pick, no refetch
+  saveSliders();
 });
 document.getElementById('biasSlider').addEventListener('input', e => {
   GAIN_BIAS = +e.target.value / 100;
   if (lastBest) spawnFish(pickMovers(lastBest));
+  saveSliders();
 });
 document.getElementById('speedSlider').addEventListener('input', e => {
   SPEED = +e.target.value / 100;
   // re-leg everyone from where they are so the new pace applies immediately
   for (const f of fishes){ if (!f.dragging && !SHARKS.has(f.t.addr)) newLeg(f); }
+  saveSliders();
 });
 document.getElementById('linkBtn').addEventListener('click', async ()=>{
   const data = {
