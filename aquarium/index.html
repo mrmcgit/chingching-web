@@ -51,17 +51,8 @@ body {
   font-size:17px; color:rgba(240,246,250,0.9); white-space:nowrap; line-height:1;
 }
 .sliderGroup label .mid { font-size:12px; opacity:0.5; }
-#periodPills {
-  display:flex; gap:3px; padding:6px; border-radius:10px;
-  background:rgba(10,52,90,0.45); border:1px solid rgba(255,255,255,0.35);
-  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
-}
-#periodPills .pp {
-  border:none; background:transparent; color:rgba(240,246,250,0.7);
-  font:800 11px -apple-system,'Helvetica Neue',sans-serif; padding:7px 8px;
-  border-radius:7px; cursor:pointer; letter-spacing:0.03em;
-}
-#periodPills .pp.on { background:#FFD166; color:#123B63; }
+.sliderGroup label .end { font-size:11px; font-weight:800; letter-spacing:0.04em; color:rgba(240,246,250,0.75); }
+#periodLabel { font-size:12px; font-weight:900; letter-spacing:0.08em; color:#FFD166; opacity:1; }
 .sliderGroup input { width:150px; accent-color:#FFD166; }
 .iconbtn {
   width:38px; height:38px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
@@ -173,8 +164,9 @@ body {
     <div class="sub">Today's top movers, as fish. Big fish moved hard. Sharks are the cores.</div>
   </div>
   <div id="controls">
-    <div id="periodPills" title="Movement window">
-      <button class="pp" data-p="h1">1H</button><button class="pp" data-p="h6">6H</button><button class="pp on" data-p="h24">24H</button><button class="pp" data-p="d7">7D</button><button class="pp" data-p="d30">30D</button><button class="pp" data-p="d60">60D</button><button class="pp" data-p="d90">90D</button>
+    <div class="sliderGroup" title="Movement window">
+      <input id="periodSlider" type="range" min="0" max="6" step="1" value="2" aria-label="Movement window">
+      <label><span class="end">1H</span><span class="mid" id="periodLabel">24H</span><span class="end">90D</span></label>
     </div>
     <div class="sliderGroup" title="Fewer or more fish">
       <input id="fishSlider" type="range" min="8" max="40" step="2" value="20" aria-label="How many fish">
@@ -810,7 +802,9 @@ try {
   if (saved.speed){ SPEED = saved.speed / 100; document.getElementById('speedSlider').value = saved.speed; }
   if (saved.period && (saved.period in DAY_PERIODS || ['h1','h6','h24'].includes(saved.period))){
     PERIOD = saved.period;
-    document.querySelectorAll('#periodPills .pp').forEach(x=>x.classList.toggle('on', x.dataset.p === PERIOD));
+    const idx = ['h1','h6','h24','d7','d30','d60','d90'].indexOf(PERIOD);
+    document.getElementById('periodSlider').value = idx;
+    document.getElementById('periodLabel').textContent = ['1H','6H','24H','7D','30D','60D','90D'][idx];
   }
 } catch(e){}
 document.getElementById('refreshBtn').addEventListener('click', load);
@@ -824,20 +818,31 @@ function saveSliders(){
     }));
   } catch(e){}
 }
-for (const b of document.querySelectorAll('#periodPills .pp')){
-  b.addEventListener('click', async ()=>{
-    if (b.dataset.p === PERIOD) return;
-    PERIOD = b.dataset.p;
-    document.querySelectorAll('#periodPills .pp').forEach(x=>x.classList.toggle('on', x===b));
-    saveSliders();
-    if (PERIOD in DAY_PERIODS && !histCache[PERIOD]){
-      statusEl.hidden = false; statusEl.textContent = 'Reading ' + DAY_PERIODS[PERIOD] + '-day history…';
-    }
-    await ensurePeriodData();
-    statusEl.hidden = true;
-    if (lastBest) spawnFish(pickMovers(lastBest));
-  });
+const PERIOD_STOPS = ['h1','h6','h24','d7','d30','d60','d90'];
+const PERIOD_NAMES = ['1H','6H','24H','7D','30D','60D','90D'];
+const periodSlider = document.getElementById('periodSlider');
+const periodLabel = document.getElementById('periodLabel');
+async function applyPeriod(p, mayFetch){
+  if (p === PERIOD) return;
+  const needsFetch = (p in DAY_PERIODS) && !histCache[p];
+  if (needsFetch && !mayFetch) return;    // wait for release before hitting the network
+  PERIOD = p;
+  saveSliders();
+  if (needsFetch){
+    statusEl.hidden = false; statusEl.textContent = 'Reading ' + DAY_PERIODS[p] + '-day history…';
+  }
+  await ensurePeriodData();
+  statusEl.hidden = true;
+  if (lastBest) spawnFish(pickMovers(lastBest));
 }
+periodSlider.addEventListener('input', ()=>{
+  const p = PERIOD_STOPS[+periodSlider.value];
+  periodLabel.textContent = PERIOD_NAMES[+periodSlider.value];
+  applyPeriod(p, false);                  // hour stops and cached days switch live mid-drag
+});
+periodSlider.addEventListener('change', ()=>{
+  applyPeriod(PERIOD_STOPS[+periodSlider.value], true);
+});
 document.getElementById('fishSlider').addEventListener('input', e => {
   FISH_LIMIT = +e.target.value;
   if (lastBest) spawnFish(pickMovers(lastBest));   // instant re-pick, no refetch
