@@ -46,7 +46,11 @@ body {
   background:rgba(10,52,90,0.45); border:1px solid rgba(255,255,255,0.35);
   backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
 }
-.sliderGroup label { font-size:12px; font-weight:800; letter-spacing:0.2em; color:rgba(240,246,250,0.85); white-space:nowrap; line-height:1; }
+.sliderGroup label {
+  display:flex; justify-content:space-between; align-items:center; width:100%;
+  font-size:17px; color:rgba(240,246,250,0.9); white-space:nowrap; line-height:1;
+}
+.sliderGroup label .mid { font-size:12px; opacity:0.5; }
 .sliderGroup input { width:150px; accent-color:#FFD166; }
 .iconbtn {
   width:38px; height:38px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
@@ -161,11 +165,15 @@ body {
   <div id="controls">
     <div class="sliderGroup" title="Fewer or more fish">
       <input id="fishSlider" type="range" min="8" max="40" step="2" value="20" aria-label="How many fish">
-      <label>&#128031; &#10231; &#128031;&#128031;&#128031;</label>
+      <label><span>&#128031;</span><span class="mid">&#10231;</span><span>&#128031;&#128031;&#128031;</span></label>
     </div>
     <div class="sliderGroup" title="Losers, balanced, or gainers">
       <input id="biasSlider" type="range" min="0" max="100" step="10" value="50" aria-label="Losers to gainers mix">
-      <label>&#128201; &#10231; &#128200;</label>
+      <label><span>&#128201;</span><span class="mid">&#10231;</span><span>&#128200;</span></label>
+    </div>
+    <div class="sliderGroup" title="Slow to fast">
+      <input id="speedSlider" type="range" min="40" max="250" step="10" value="100" aria-label="Swim speed">
+      <label><span>&#128034;</span><span class="mid">&#10231;</span><span>&#9889;</span></label>
     </div>
     <button id="refreshBtn" class="iconbtn" title="Refresh">&#8635;</button>
     <button id="snapBtn" class="iconbtn" title="Share a snapshot (PNG)">&#128247;</button>
@@ -242,6 +250,7 @@ function attachLogoChain(img, t){
 
 let FISH_LIMIT = 20;                   // 10 gainers + 10 losers by default; the slider tunes it
 let GAIN_BIAS = 0.5;                   // 0 = all losers, 0.5 = balanced, 1 = all gainers
+let SPEED = 1;                         // swim-speed multiplier, 0.4 (lazy) to 2.5 (frantic)
 const MIN_LIQUIDITY = 50;
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
 // The app's shark list: HEX, WPLS, PLSX, INC (PRVX rarely charts; kept anyway)
@@ -527,7 +536,7 @@ function newLeg(fish, first){
   fish.fx = fish.x; fish.fy = fish.y;
   fish.tx = rand(fish.w/2, W - fish.w/2);
   fish.ty = clamp(fish.y + rand(-60, 60), H*0.12, H*0.86);
-  fish.dur = rand(4, 8) * 1000;
+  fish.dur = rand(4, 8) * 1000 / SPEED;
   fish.t0 = performance.now() + (first ? rand(-4000, 0) : 0);   // desync starts
   fish.facing = fish.tx > fish.x ? 1 : -1;
 }
@@ -718,6 +727,11 @@ document.getElementById('fishSlider').addEventListener('input', e => {
 document.getElementById('biasSlider').addEventListener('input', e => {
   GAIN_BIAS = +e.target.value / 100;
   if (lastBest) spawnFish(pickMovers(lastBest));
+});
+document.getElementById('speedSlider').addEventListener('input', e => {
+  SPEED = +e.target.value / 100;
+  // re-leg everyone from where they are so the new pace applies immediately
+  for (const f of fishes){ if (!f.dragging) newLeg(f); }
 });
 document.getElementById('linkBtn').addEventListener('click', async ()=>{
   const data = {
