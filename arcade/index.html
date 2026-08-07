@@ -37,6 +37,23 @@ h1 .accent { color:#E4572E; }
 .gname { font-size:21px; font-weight:900; color:#2E2A24; margin-top:12px; }
 .gname .accent { color:#E4572E; }
 .gdesc { font-size:13px; color:rgba(58,54,48,0.6); line-height:1.5; margin-top:4px; min-height:58px; }
+
+/* The hero. One tile the width of the two beside it, which is the whole row, so
+   the newest game is the first thing the page says rather than the first of five
+   equal things. max-width keeps it shrinking on a narrow screen: the rest of
+   this page is fixed-width tiles that wrap, and a 682px hero that refuses to
+   wrap would be the only thing here that scrolls sideways.
+   min-height goes back to 0 because the reserve on .gdesc exists to keep five
+   tiles' buttons on one line, and the hero has no neighbour to line up with. */
+.game--hero { width:682px; max-width:100%; }
+.game--hero canvas { height:220px; }
+.game--hero .gname { font-size:30px; margin-top:14px; }
+.game--hero .gdesc { font-size:14.5px; min-height:0; max-width:52ch; }
+.gflag {
+  position:absolute; top:0; left:0; z-index:1;
+  background:#E4572E; color:#FBF8F1; font-size:11px; font-weight:900;
+  letter-spacing:0.12em; padding:5px 10px;
+}
 .play {
   display:inline-block; margin-top:12px; background:#E4572E; color:#fff;
   font-weight:800; font-size:14.5px; letter-spacing:0.03em; padding:10px 26px;
@@ -76,6 +93,13 @@ h1 .accent { color:#E4572E; }
 <div class="sub">Origami games from the PulseChain universe, most built on the <b>real PLS chart</b>. Free, in your browser, live leaderboards.</div>
 
 <div class="games">
+  <a class="game game--hero" href="/around-the-block/">
+    <span class="gflag">NEW</span>
+    <canvas id="cvAtb" width="1276" height="440"></canvas>
+    <div class="gname">AROUND THE <span class="accent">BLOCK</span></div>
+    <div class="gdesc">Eat the streets of a tiny planet. Six real cities, every token on the board, and four things that want you: the Bear, the Whale, the Rug Pull and the FOMO.</div>
+    <span class="play">PLAY</span>
+  </a>
   <a class="game" href="/moonshot/">
     <canvas id="cvMoon" width="572" height="300"></canvas>
     <div class="gname">MOON<span class="accent">SHOT</span></div>
@@ -135,6 +159,118 @@ function scene(c, W, H, sky){
   c.strokeStyle='rgba(63,163,94,0.55)'; c.lineWidth=3;
   c.beginPath(); hs.forEach((v,i)=>{const x=i*(W/(hs.length-1)),y=H*v; i?c.lineTo(x,y):c.moveTo(x,y);}); c.stroke();
 }
+(function(){
+  /* Around the Block. The only tile that does NOT use scene(): every other game
+     here is played on the PLS chart and shares that paper chart floor, and this
+     one is played on a sphere. Borrowing the chart would say the wrong thing
+     about the game in the one image that has to say what it is.
+
+     Everything sits on ONE circle, addressed by angle, so the buildings, the road
+     and the tokens cannot drift apart: at(a, r) is the point r out from the
+     planet centre at angle a, measured from the top. Radius out is up. */
+  /* Sized FROM the canvas rather than from three hardcoded numbers, so the hero
+     banner and an ordinary tile are one drawing at two sizes instead of two
+     drawings that have to be kept in step. At 572x300 this resolves to exactly
+     the values it replaced (286, 150, 143, 214, 150), so the small tile is
+     untouched; the planet centre stays 64 below the frame and the radius stays
+     the frame height, which is what keeps the horizon in the same place at any
+     width. */
+  const cv=document.getElementById('cvAtb'), c=cv.getContext('2d');
+  const DPR=2, W=cv.width/DPR, H=cv.height/DPR;
+  c.setTransform(DPR,0,0,DPR,0,0);
+  const CX=W/2, CY=H+64, R=H;
+  const at=(a,r)=>[CX+r*Math.sin(a), CY-r*Math.cos(a)];
+
+  // Karl the Fog, which is the sky San Francisco is actually rendered under.
+  const g=c.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#E7EFF6'); g.addColorStop(1,'#F6EFE1');
+  c.fillStyle=g; c.fillRect(0,0,W,H);
+
+  // The planet, then the road as a band just inside its edge.
+  c.beginPath(); c.arc(CX,CY,R,0,7); c.fillStyle='#E3D7BB'; c.fill();
+  c.beginPath(); c.arc(CX,CY,R-5,Math.PI*1.18,Math.PI*1.82); // top of the circle
+  c.strokeStyle='#5D6774'; c.lineWidth=11; c.stroke();
+  c.setLineDash([5,9]);
+  c.beginPath(); c.arc(CX,CY,R-5,Math.PI*1.2,Math.PI*1.8);
+  c.strokeStyle='#F3EEDF'; c.lineWidth=1.4; c.stroke();
+  c.setLineDash([]);
+
+  /* A second street lower down, and two parks. Without them the bottom third is
+     one flat tan field: the planet reads as a hill rather than as a world with
+     streets all the way round it, which is the entire premise of the game. */
+  c.setLineDash([]);
+  c.beginPath(); c.arc(CX,CY,R-52,Math.PI*1.26,Math.PI*1.74);
+  c.strokeStyle='rgba(93,103,116,0.55)'; c.lineWidth=7; c.stroke();
+  // Centre line, or the band above reads as a crack in the ground rather than as
+  // a road. Same dash the main street uses, scaled down with it.
+  c.setLineDash([4,7]);
+  c.beginPath(); c.arc(CX,CY,R-52,Math.PI*1.28,Math.PI*1.72);
+  c.strokeStyle='rgba(243,238,223,0.75)'; c.lineWidth=1.1; c.stroke();
+  c.setLineDash([]);
+  for (const [a,w,d] of [[-0.36,0.055,26],[0.30,0.05,24]]){
+    poly(c,[at(a-w,R-d),at(a+w,R-d),at(a+w,R-d-15),at(a-w,R-d-15)],'#8FB56A');
+  }
+
+  /* The Painted Ladies, which are the one thing a 286px crop can carry that says
+     San Francisco rather than "a city". Each is a slab standing radially off the
+     surface with a gable on top, and the far ones lean away from the camera for
+     free because the angle does it.
+
+     They sit in two groups with a gap in the middle. The gap is not decoration:
+     it is where the player, the ghost and the line of tokens go, and a roofline
+     running behind all three would turn the one moment this tile has to tell
+     into a texture. */
+  const houses=[[-0.80,'#EF85A0',20],[-0.64,'#8CC4E8',26],[-0.48,'#86C98A',22],
+                [0.48,'#F8CD5C',24],[0.64,'#B695DD',20],[0.80,'#F6ECD2',27]];
+  for (const [a,col,h] of houses){
+    const w=0.052, base=R-11, top=base+h;
+    poly(c,[at(a-w,base),at(a+w,base),at(a+w,top),at(a-w,top)],col,'rgba(58,54,48,0.30)');
+    poly(c,[at(a-w,top),at(a+w,top),at(a,top+9)],shade(col,-0.22));
+    poly(c,[at(a+w*0.15,base),at(a+w,base),at(a+w,top)],shade(col,-0.12)); // shaded flank
+  }
+  // Transamerica, well out on the left shoulder. It was at -0.20 and the pyramid
+  // grew straight out of the player's hat.
+  poly(c,[at(-0.36,R-11),at(-0.30,R-11),at(-0.33,R+40)],'#D8D2C6','rgba(58,54,48,0.30)');
+
+  /* The tokens. Hexagons, the same die the other tiles use for a coin, because
+     this is the same arcade and a token is a token. All AHEAD of the player and
+     none behind, so the tile reads left to right as chased-from, standing-on,
+     running-toward. */
+  for (const a of [0.13,0.25,0.37]){
+    const [x,y]=at(a,R+8); c.save(); c.translate(x,y); c.scale(0.62,0.62);
+    poly(c,[[0,-13],[11.3,-6.5],[11.3,6.5],[0,13],[-11.3,6.5],[-11.3,-6.5]],'#F2C14E','#8A6A1B');
+    c.restore();
+  }
+
+  /* The player, on the road at the top of the world, in the hat.
+
+     The legs are what make this a person. Without them it is a pale trapezoid
+     under a wide brown disc, which at this size is a lamp: the eye needs the
+     break at the bottom of the silhouette to read the shape as standing rather
+     than as sitting on the ground. The brim came in too, for the same reason. */
+  (function(){
+    const [x,y]=at(0.0,R+3); c.save(); c.translate(x,y); c.scale(1.7,1.7);
+    poly(c,[[-3,0],[-0.7,0],[-0.7,-5],[-3,-5]],'#3A3630');                    // legs
+    poly(c,[[0.7,0],[3,0],[3,-5],[0.7,-5]],'#3A3630');
+    poly(c,[[-3.4,-4],[3.4,-4],[3,-12],[-3,-12]],'#EFE6D2','rgba(58,54,48,0.35)'); // shirt
+    poly(c,[[-4.6,-11],[-3.2,-11],[-3.2,-6],[-4.6,-6]],'#F0C9A0');            // arms
+    poly(c,[[3.2,-11],[4.6,-11],[4.6,-6],[3.2,-6]],'#F0C9A0');
+    poly(c,[[-2.9,-12],[2.9,-12],[2.4,-16.5],[-2.4,-16.5]],'#F0C9A0');        // face
+    poly(c,[[-4.6,-16],[4.6,-16],[3.2,-18.4],[-3.2,-18.4]],'#7A5A32');        // brim
+    poly(c,[[-2.9,-18.4],[2.9,-18.4],[2.4,-22.4],[-2.4,-22.4]],'#8A6A3B');    // crown
+    c.restore();
+  })();
+
+  /* One ghost, behind and closing, because a chase game whose thumbnail shows
+     nobody chasing is a game about walking. The Bear: it is the one that goes
+     straight for you, so it is the one that would be right there. */
+  (function(){
+    const [x,y]=at(-0.17,R+4); c.save(); c.translate(x,y); c.scale(1.5,1.5);
+    poly(c,[[-6,0],[-6,-8],[-3,-12],[3,-12],[6,-8],[6,0],[3,-2.5],[0,0],[-3,-2.5]],'#E4572E','rgba(58,54,48,0.30)');
+    c.fillStyle='#FBF8F1'; c.beginPath(); c.arc(-2.2,-7,1.9,0,7); c.arc(2.2,-7,1.9,0,7); c.fill();
+    c.restore();
+  })();
+})();
 (function(){
   const cv=document.getElementById('cvMoon'), c=cv.getContext('2d');
   c.setTransform(2,0,0,2,0,0);

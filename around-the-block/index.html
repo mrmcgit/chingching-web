@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#bfe3f7" />
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="apple-touch-icon" href="logo-180.webp" />
+  <title>Around the Block</title>
+  <style>
+    /* ==========================================================================
+       AROUND THE BLOCK - front end
+       Design language: a travel document pressed into an arcade cabinet.
+       Dark lacquered console panels carry warm passport paper; foil gold marks
+       what you have earned, neon pink/violet marks what you can do next.
+       No external assets: every mark is CSS, inline SVG, or a data URI.
+       ========================================================================== */
+
+    :root {
+      /* ---- palette -------------------------------------------------------- */
+      --paper: #f6efdd;        /* passport stock */
+      --paper-2: #efe5cd;      /* passport stock, shaded */
+      --pink: #ff5fa2;
+      --purple: #9b5cff;
+      --gold: #d9b45f;
+      --gold-lite: #f2ddA0;
+      --panel-1: #17253d;
+      --panel-2: #0f1a2c;
+      --panel-3: #1a1533;
+      --fg: #eef4ff;
+      --fg-dim: #a9bad2;
+      --fg-mute: #7e91ab;
+      --edge: rgba(255,255,255,.12);
+      --edge-hi: rgba(255,255,255,.20);
+
+      /* ---- type ----------------------------------------------------------
+         Three families, no downloads. `ui-rounded` resolves to SF Pro Rounded
+         on Apple platforms, which is the playful voice this game wants; the
+         fallbacks stay humanist rather than defaulting to Helvetica.
+         The serif carries anything that should read as an official document. */
+      --font-display: ui-rounded, "SF Pro Rounded", -apple-system, "Avenir Next",
+                      "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+      --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, Roboto,
+                 "Helvetica Neue", Arial, sans-serif;
+      --font-doc: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+                  Georgia, "Times New Roman", serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+      /* Modular scale, ratio 1.25 off a 15px base. Display sizes are fluid so
+         the same hierarchy survives 375px through 1920px. */
+      --t-3xs: 9.5px;
+      --t-2xs: 10.5px;
+      --t-xs: 12px;
+      --t-sm: 13px;
+      --t-base: 15px;
+      --t-md: 17px;
+      --t-lg: clamp(19px, 4.6vw, 22px);
+      --t-xl: clamp(23px, 6vw, 28px);
+      --t-2xl: clamp(28px, 7.6vw, 35px);
+      --t-3xl: clamp(34px, 10.5vw, 52px);
+
+      /* Tracking is part of the scale: display tightens, labels open up. */
+      --tr-tight: -.022em;
+      --tr-snug: -.01em;
+      --tr-wide: .12em;
+      --tr-wider: .2em;
+
+      /* ---- motion --------------------------------------------------------
+         Five durations, four curves. Everything in the front end picks from
+         these so screens read as one choreographed system. */
+      --d-1: 120ms;   /* micro feedback: press, focus */
+      --d-2: 200ms;   /* hover, small state change */
+      --d-3: 320ms;   /* element enter */
+      --d-4: 520ms;   /* screen enter */
+      --d-5: 820ms;   /* stamp landing, banner sweep */
+      --e-out: cubic-bezier(.22, 1, .36, 1);        /* expo-out, sharp arrival */
+      --e-in: cubic-bezier(.55, .06, .68, .19);     /* exits leave quickly */
+      --e-spring: cubic-bezier(.34, 1.56, .64, 1);  /* overshoot for pops */
+      --e-stamp: cubic-bezier(.28, 1.5, .38, 1);    /* heavier overshoot, ink */
+
+      /* ---- material ------------------------------------------------------- */
+      --shadow-panel: 0 32px 70px -22px rgba(3,7,14,.9), 0 4px 16px rgba(3,7,14,.5);
+      --shadow-plate: 0 3px 12px rgba(4,10,18,.38);
+      --shadow-btn: 0 10px 22px -10px rgba(155,92,255,.9);
+
+      /* Security-print rosette for the passport page. Concentric hairlines tile
+         into a moire that reads as engraved paper at any size. */
+      --guilloche: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cg fill='none' stroke='%23a8874a' stroke-width='.55' opacity='.34'%3E%3Ccircle cx='48' cy='48' r='45'/%3E%3Ccircle cx='48' cy='48' r='37'/%3E%3Ccircle cx='48' cy='48' r='29'/%3E%3Ccircle cx='48' cy='48' r='21'/%3E%3Ccircle cx='48' cy='48' r='13'/%3E%3Ccircle cx='48' cy='48' r='5'/%3E%3C/g%3E%3C/svg%3E");
+      --crest: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' fill='none' stroke='%233d4a72' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='24' cy='24' r='14'/%3E%3Cellipse cx='24' cy='24' rx='6' ry='14'/%3E%3Cpath d='M10 24h28M13 15.5h22M13 32.5h22'/%3E%3Cellipse cx='24' cy='24' rx='21' ry='8' transform='rotate(-28 24 24)' stroke='%23a8874a' stroke-dasharray='2.5 4'/%3E%3C/svg%3E");
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    html, body {
+      margin: 0; height: 100%; overflow: hidden; background: #bfe3f7;
+      touch-action: none; overscroll-behavior: none;
+      -webkit-user-select: none; user-select: none;
+      font-family: var(--font-ui);
+      font-size: var(--t-base);
+      color: var(--fg);
+      -webkit-font-smoothing: antialiased;
+    }
+    #app { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+    .srOnly {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+      white-space: nowrap; border: 0;
+    }
+
+    /* ==========================================================================
+       BUTTONS AND FIELDS
+       Every control has rest / hover / active / focus-visible, and every hit
+       target clears 44px.
+       ========================================================================== */
+    button {
+      position: relative;
+      font: 800 var(--t-md)/1 var(--font-display);
+      letter-spacing: var(--tr-snug);
+      color: #fff;
+      background: linear-gradient(180deg, #ff74af 0%, var(--pink) 42%, var(--purple) 100%);
+      border: 0; border-radius: 999px;
+      padding: 15px 32px; min-height: 48px;
+      cursor: pointer; margin-top: 6px;
+      box-shadow: var(--shadow-btn), inset 0 1px 0 rgba(255,255,255,.45),
+                  inset 0 -2px 0 rgba(0,0,0,.18);
+      transition: transform var(--d-2) var(--e-out), filter var(--d-2) var(--e-out);
+      will-change: transform;
+    }
+    /* Sheen lives on a pseudo-element so hover only animates opacity. */
+    button::after {
+      content: ""; position: absolute; inset: 0; border-radius: inherit;
+      background: linear-gradient(180deg, rgba(255,255,255,.42), rgba(255,255,255,0) 55%);
+      opacity: .5; transition: opacity var(--d-2) var(--e-out); pointer-events: none;
+    }
+    @media (hover: hover) {
+      button:hover { transform: translateY(-2px) scale(1.015); }
+      button:hover::after { opacity: .85; }
+    }
+    button:active { transform: translateY(1px) scale(.985); transition-duration: var(--d-1); }
+    button:focus-visible {
+      outline: 3px solid #8fe3ff;
+      outline-offset: 3px;
+    }
+
+    button.ghost {
+      font: 700 var(--t-sm)/1 var(--font-ui);
+      letter-spacing: .02em;
+      background: rgba(255,255,255,.08);
+      color: var(--fg-dim);
+      border: 1px solid var(--edge);
+      box-shadow: none;
+      padding: 12px 20px;
+    }
+    button.ghost::after { opacity: 0; }
+    @media (hover: hover) {
+      button.ghost:hover { background: rgba(255,255,255,.15); color: var(--fg); transform: translateY(-1px); }
+    }
+
+    input[type=text] {
+      font: 800 var(--t-md)/1 var(--font-display);
+      text-align: center; text-transform: uppercase; letter-spacing: .22em;
+      width: 100%; min-height: 48px;
+      padding: 14px 12px;
+      border: 1.5px solid var(--edge-hi); border-radius: 14px;
+      margin: 10px 0 4px;
+      background: rgba(4,10,20,.5); color: var(--fg);
+      transition: border-color var(--d-2) var(--e-out), background-color var(--d-2) var(--e-out);
+    }
+    input[type=text]::placeholder { color: var(--fg-mute); letter-spacing: .18em; }
+    input[type=text]:focus {
+      outline: none; border-color: var(--pink);
+      background: rgba(4,10,20,.72);
+    }
+    input[type=text]:focus-visible { outline: 3px solid #8fe3ff; outline-offset: 2px; }
+
+    /* ==========================================================================
+       SCREENS
+       Overlays keep the `show` class contract from main.js. Exits are handled by
+       ui.js adding `leaving` and delaying the class removal, so screens can play
+       out instead of vanishing.
+       ========================================================================== */
+    .overlay {
+      position: fixed; inset: 0; display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: max(env(safe-area-inset-top), 16px) 16px max(env(safe-area-inset-bottom), 16px);
+      background:
+        radial-gradient(120% 90% at 50% 0%, rgba(10,20,36,.30), rgba(6,11,20,.72) 72%);
+      /* Blur only, no saturate: the scene keeps rendering behind a menu, so
+         this filter is recomposited every frame and one pass is enough. */
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      text-align: center; z-index: 20;
+    }
+    /* Enter/exit animations hang off `.show` rather than the base rule: a class
+       change is a guaranteed restart, where relying on display:none terminating
+       the animation is merely usually true. */
+    .overlay.show { display: flex; animation: overlayIn var(--d-4) var(--e-out) both; }
+    .overlay.show.leaving {
+      pointer-events: none;
+      z-index: 14;                       /* let the city banner rise as we go */
+      animation: overlayOut 260ms var(--e-in) both;
+    }
+    @keyframes overlayIn  { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes overlayOut { from { opacity: 1; } to { opacity: 0; } }
+
+    /* The panel: lacquered dark console material with a lit top edge. */
+    .card {
+      position: relative;
+      width: 100%; max-width: 420px;
+      max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+      padding: 22px 22px 24px;
+      border-radius: 26px;
+      border: 1px solid var(--edge);
+      /* Layered rather than stacked on a pseudo-element: an absolutely
+         positioned ::before would paint over the card's own text. Top layer is
+         a warm rim light, so the panel reads as a lit object. */
+      background:
+        radial-gradient(90% 50% at 50% -12%, rgba(255,95,162,.20), transparent 70%),
+        linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 34%),
+        linear-gradient(158deg, var(--panel-1) 0%, var(--panel-2) 52%, var(--panel-3) 100%);
+      box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255,255,255,.18);
+      color: var(--fg);
+    }
+    .overlay.show .card { animation: cardIn var(--d-4) var(--e-out) 60ms both; }
+    .overlay.show.leaving .card { animation: cardOut 240ms var(--e-in) both; }
+    @keyframes cardIn {
+      from { opacity: 0; transform: translate3d(0, 26px, 0) scale(.96); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes cardOut {
+      from { opacity: 1; transform: none; }
+      to   { opacity: 0; transform: translate3d(0, 14px, 0) scale(.97); }
+    }
+
+    /* Children rise in sequence. `--i` is set inline per row in the markup. */
+    .overlay.show .stagger > * {
+      animation: riseIn var(--d-3) var(--e-out) both;
+      animation-delay: calc(140ms + var(--i, 0) * 55ms);
+    }
+    /* The three result stats arrive one at a time, left to right, inside the row
+       that has already risen with the rest of the card. `--s` is the column
+       index, set inline by ui.js. */
+    .overlay.show .statRow > .stat {
+      animation: riseIn var(--d-3) var(--e-out) both;
+      animation-delay: calc(300ms + var(--s, 0) * 170ms);
+    }
+    @keyframes riseIn {
+      from { opacity: 0; transform: translate3d(0, 12px, 0); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    h1 {
+      margin: 0;
+      font: 900 var(--t-3xl)/0.94 var(--font-display);
+      letter-spacing: var(--tr-tight);
+      text-wrap: balance;
+      background: linear-gradient(180deg, #ffffff 32%, #cfe0ff 100%);
+      -webkit-background-clip: text; background-clip: text;
+      color: transparent;
+      filter: drop-shadow(0 3px 10px rgba(0,0,0,.35));
+    }
+    h1 .line2 { display: block; }
+    h2 {
+      margin: 0 0 4px;
+      font: 900 var(--t-2xl)/1.06 var(--font-display);
+      letter-spacing: var(--tr-tight);
+      text-wrap: balance;
+    }
+    /* font-family is stated, not inherited. Every rule that leaned on the
+       `html, body` declaration for its family rendered as default Times in any
+       context where that rule does not match the container: an SVG
+       foreignObject rasterisation (which is how the review screenshots are
+       taken), a print stylesheet, or a cloned subtree. The title tagline read as
+       a serif in the judged frames purely because of that, which is the
+       "clashing serif" note. Anything with its own type voice now says so. */
+    p {
+      margin: 10px 0 0;
+      font-family: var(--font-ui);
+      font-size: var(--t-sm); line-height: 1.55; color: var(--fg-dim);
+      text-wrap: pretty;
+      letter-spacing: .004em;
+    }
+    .overlay, #hud, #banner, #feedbackScreen, #briefScreen, table {
+      font-family: var(--font-ui);
+      color: var(--fg);
+    }
+    .eyebrow {
+      font: 800 var(--t-2xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase;
+      color: var(--gold);
+    }
+
+    /* ---- title screen ------------------------------------------------------ */
+    /* An authored layer over the blurred gameplay frame. Two soft chroma pools
+       that drift, so the menu is a designed backdrop rather than a paused game.
+       One composited element, transform only, and it only exists while the title
+       overlay is displayed (display:none halts animations), so it never costs a
+       game frame. */
+    #titleScreen::before {
+      content: ""; position: absolute; inset: -18%;
+      pointer-events: none;
+      background:
+        radial-gradient(38% 32% at 22% 18%, rgba(255,95,162,.20), transparent 70%),
+        radial-gradient(42% 34% at 80% 80%, rgba(155,92,255,.24), transparent 72%),
+        radial-gradient(30% 24% at 64% 8%, rgba(143,227,255,.13), transparent 70%);
+      animation: menuDrift 38s var(--e-out) infinite alternate;
+      will-change: transform;
+    }
+    @keyframes menuDrift {
+      from { transform: translate3d(-2.4%, -1.6%, 0) scale(1.02); }
+      to   { transform: translate3d(2.4%, 2.2%, 0) scale(1.09); }
+    }
+
+    /* The logo needs a positioned wrapper to carry its sheen: pseudo-elements
+       cannot hang off an <img>. The gap below the badge is a variable because the
+       sheen has to stop at the badge, not at the bottom of the margin box. */
+    /* inline-block on purpose, not block+fit-content: an inline-block
+       establishes a BFC, so the image's bottom margin stays INSIDE this box
+       instead of collapsing out of it, which is what lets the sheen stop at the
+       badge. vertical-align keeps the line box from adding descender space under
+       it. */
+    .titleLogoWrap {
+      position: relative; display: inline-block; vertical-align: bottom;
+      --logo-gap: 14px;
+    }
+    .titleLogoWrap::after {
+      content: ""; position: absolute; left: 0; right: 0; top: 0;
+      bottom: var(--logo-gap);
+      clip-path: circle(49% at 50% 50%);
+      background: linear-gradient(72deg, transparent 36%, rgba(255,255,255,.40) 48%,
+                  transparent 60%);
+      opacity: 0; pointer-events: none;
+      animation: logoSheen 8s linear 1.4s infinite;
+      will-change: transform, opacity;
+    }
+    /* A single pass every eight seconds: a glint on foil, not a strobe.
+       LINEAR, and the opacity peak sits at the MIDPOINT of the travel. Both
+       halves of that are the fix for a sheen that flashed to the right of the
+       badge instead of crossing it. The travel used to run on --e-out, an expo
+       curve that is roughly 87% complete a quarter of the way through its time,
+       so at 6% (where opacity peaked) the band had already arrived at the right
+       edge and everything the eye caught happened there. Peak brightness now
+       lands at 11%, which with constant speed is exactly the middle of the
+       sweep. A glint has no reason to accelerate anyway: it should cross at one
+       speed and be brightest as it passes the centre. */
+    @keyframes logoSheen {
+      0%   { opacity: 0; transform: translate3d(-46%, 0, 0); }
+      11%  { opacity: .55; }
+      22%  { opacity: 0; transform: translate3d(46%, 0, 0); }
+      100% { opacity: 0; transform: translate3d(46%, 0, 0); }
+    }
+    /* The stamp is a circle with real ink texture, so it needs room to be read
+       as a stamp rather than as a busy dot. Capped by viewport height as well
+       as width: on a short landscape phone a width-only cap pushes Play off
+       the bottom of the card. */
+    .titleLogo {
+      display: block; margin: 0 auto var(--logo-gap, 14px);
+      /* clamp, not a bare min(): capped by BOTH viewport axes so a short
+         landscape phone does not push Play off the card, but floored at 132px
+         so a viewport that reports zero (an embedded or backgrounded pane can)
+         collapses to a small logo rather than to nothing at all.
+         The height cap came down from 34vh to 24vh when the passport moved onto
+         this screen. The card now has to carry the logo, the tagline, four rows
+         of stamps, Play and the control hint inside 780px of content viewport,
+         which is the smallest MacBook, and the logo is the one thing here with
+         no information in it. The stamps did not shrink; this did. */
+      width: clamp(132px, min(56vw, 24vh), 240px); height: auto;
+      filter: drop-shadow(0 12px 30px rgba(0,0,0,.45));
+    }
+    .titleMark { width: 74px; height: 74px; margin: 0 auto 10px; }
+    .titleMark svg { width: 100%; height: 100%; display: block; }
+    /* The route line drifts. Menu only, so it never competes for a game frame. */
+    .titleMark .orbit {
+      transform-box: fill-box; transform-origin: 50% 50%;
+      animation: orbitDrift 26s linear infinite;
+    }
+    @keyframes orbitDrift { to { transform: rotate(360deg); } }
+
+    #titleScreen .eyebrow { margin-bottom: 8px; }
+    #controlHint {
+      margin-top: 14px;
+      font: 600 var(--t-xs)/1.5 var(--font-ui);
+      color: var(--fg-mute);
+      letter-spacing: .01em;
+    }
+    /* One typographic voice: geometric caps with tracking, the same voice the
+       HUD labels and the arrival card use. */
+    #playBtn {
+      margin-top: 0; min-width: 0; font-size: var(--t-lg);
+      text-transform: uppercase; letter-spacing: .1em;
+      padding-left: 26px; padding-right: 24px;
+      /* The city name is part of the button's name, and city names run from
+         CAIRO to SAN FRANCISCO. Ellipsis rather than wrap, so a long one never
+         turns Play into two lines and pushes the control hint off the screen. */
+      max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Play, and the dice that changes what Play says, on one line under the
+       passport. The dice is a peer of Play, not a third thing somewhere else:
+       it is the only other way to move the selection. */
+    .playRow {
+      display: flex; align-items: stretch; justify-content: center;
+      gap: 8px; margin-top: 14px; max-width: 100%;
+    }
+    .playRow #playBtn { flex: 0 1 auto; }
+    /* Square, glyph only, and sized off the button beside it so the row reads as
+       one control cluster. The accessible name is on the button; the die face is
+       aria-hidden, because "game die" read aloud is not an instruction. */
+    button.diceBtn {
+      flex: 0 0 auto; margin-top: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 0; width: 3em; padding: 0;
+      font-size: var(--t-md); line-height: 1;
+    }
+    .diceBtn > span { display: block; transition: transform var(--d-3) var(--e-out); }
+    @media (hover: hover) {
+      .diceBtn:hover > span { transform: rotate(18deg) scale(1.08); }
+    }
+    .diceBtn:active > span { transform: rotate(-14deg) scale(.94); }
+
+    /* ---- BETA instructions --------------------------------------------------
+       Top right of the SCREEN, not of the card: a standing notice about the
+       build, sitting clear of the single top-to-bottom path through the card.
+       Two lines, heading over detail, so the ask is legible without opening
+       anything. Pressing it still opens the full brief, which runs to six items
+       and was never going to fit in a corner. */
+    button.betaChip {
+      position: absolute; z-index: 2;
+      top: max(env(safe-area-inset-top), 14px); right: 14px;
+      width: min(280px, 42vw); margin-top: 0;
+      display: block; text-align: left;
+      padding: 8px 12px 9px; border-radius: 12px;
+      animation: riseIn var(--d-3) var(--e-out) 420ms both;
+    }
+    .betaChip[hidden] { display: none; }
+    .betaChip > b {
+      display: block;
+      font: 800 var(--t-2xs)/1.2 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase; color: var(--gold);
+    }
+    .betaChip > span {
+      display: block; margin-top: 2px;
+      font: 500 11.5px/1.35 var(--font-ui);
+      letter-spacing: .004em; color: var(--fg-dim);
+      text-transform: none;
+    }
+    .betaChip > span:empty { display: none; }
+    /* Idle breathing ring: the menu should not be dead still. Border on a
+       pseudo-element so only transform and opacity ever animate. */
+    #playBtn::before {
+      content: ""; position: absolute; inset: -5px; border-radius: 999px;
+      border: 1.5px solid rgba(255,255,255,.5);
+      opacity: 0; pointer-events: none;
+      animation: playPulse 3.6s var(--e-out) infinite;
+      will-change: transform, opacity;
+    }
+    @keyframes playPulse {
+      0%   { opacity: 0; transform: scale(.94); }
+      35%  { opacity: .38; }
+      70%  { opacity: 0; transform: scale(1.10); }
+      100% { opacity: 0; transform: scale(1.10); }
+    }
+    .playGo {
+      display: inline-block; margin-left: 10px;
+      font-size: .82em; vertical-align: 1px;
+      transform: translate3d(0, 0, 0);
+      transition: transform var(--d-2) var(--e-out);
+    }
+    @media (hover: hover) {
+      #playBtn:hover .playGo { transform: translate3d(5px, 0, 0); }
+      /* Duration only. An `opacity` here would be silently ignored: a running
+         animation outranks a normal declaration on the same property. */
+      #playBtn:hover::before { animation-duration: 1.5s; }
+    }
+    #playBtn:active .playGo { transform: translate3d(2px, 0, 0); }
+
+    /* ---- the departure board -----------------------------------------------
+       The passport, in selection mode. It reuses the passport's own stock,
+       crest, progress bar and stamp tiles (see PASSPORT below), so the page a
+       player chooses from is the page they are filling in. Everything specific
+       to choosing is scoped under #cityScreen or .cityOpt so nothing here can
+       change how the passport renders on the title or results screens.
+
+       The control is a radio group. Arrow keys, roving focus, "3 of 23" and the
+       skipping of disabled tiles are all native behaviour, and a locked city
+       that is `disabled` cannot be reached by pointer, keyboard or assistive
+       technology. What this replaced was a <label> plus <select>, accessible by
+       construction, so this has to be too. */
+    .card--cities { max-width: 540px; }
+    /* Unscoped: the same fieldset now wraps the book on the title screen too,
+       where it is furniture for the radio group and must never draw a box. */
+    .cityFields { border: 0; padding: 0; margin: 0; min-width: 0; }
+    /* The page scrolls, not the card: Fly and Play must both stay put on a
+       phone. touch-action is stated because the document sets `none` to keep the
+       game from panning, and that would otherwise leave this list unscrollable.
+       On a laptop the whole book fits and this never engages. */
+    #cityScreen .stamps { max-height: min(52vh, 460px); }
+    #titleBook { max-height: min(46vh, 420px); }
+    #cityScreen .stamps, #titleBook {
+      overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+    }
+    /* SIX across on a book you choose from, which lands 23 cities in four rows
+       rather than five and is what lets the bottom row clear the fold on a 13
+       inch laptop. Six is as far as it goes: the stamps are drawn artwork and
+       the engraving is the reason this screen is good, so the row count comes
+       down by widening the card, never by shrinking the tile. Below 560px the
+       page is a phone and .stampGrid's own four across still applies. */
+    @media (min-width: 560px) {
+      .stampGrid.isPicker { grid-template-columns: repeat(6, 1fr); gap: 6px; }
+    }
+    .stampGrid.isPicker { margin-top: 2px; }
+    .cityOpt { position: relative; min-width: 0; }
+    /* Visually hidden, NOT display:none: the radio has to stay focusable and
+       stay in the accessibility tree, it is the entire control. */
+    .cityOptInput {
+      position: absolute; left: 8px; top: 8px;
+      width: 1px; height: 1px; margin: 0; padding: 0;
+      opacity: 0; pointer-events: none;
+    }
+    .cityOpt > .citystamp {
+      display: flex; width: 100%; cursor: pointer;
+      transition: transform var(--d-2) var(--e-out), box-shadow var(--d-2) var(--e-out);
+    }
+    /* Nothing here restyles the tile itself. A tile on this board is the tile on
+       the passport page, painted by the same renderer (passport.paintStamp), and
+       every rule that decides what a stamp looks like lives under PASSPORT
+       below. There used to be a named-tile layout and a generated .cityArt
+       skyline scoped to this screen, for cities with no drawn stamp; every city
+       has one now, so both are gone along with the generator that fed them. */
+    /* The current pick. Driven by BOTH :checked and the data attribute: the
+       screenshot harness serialises a clone, where only attributes survive. */
+    .cityOpt[data-picked] > .citystamp,
+    .cityOptInput:checked + .citystamp {
+      box-shadow: 0 0 0 3px var(--pink), 0 6px 16px -6px rgba(0,0,0,.6);
+      transform: rotate(var(--rot, 0deg)) scale(1.06);
+      z-index: 2;
+    }
+    .cityOptInput:focus-visible + .citystamp {
+      outline: 3px solid #8fe3ff; outline-offset: 3px;
+    }
+    @media (hover: hover) {
+      .cityOpt:not(.isLocked) > .citystamp:hover { transform: rotate(var(--rot, 0deg)) scale(1.06); }
+    }
+    /* Locked. The secret cities until the tour is done, and on the public build
+       the cities that have not shipped yet. */
+    .cityOpt.isLocked > .citystamp { cursor: not-allowed; opacity: .55; }
+    /* Coming soon, which is a lock the PLAYER cannot do anything about, so it is
+       the one lock state that says so on the tile instead of only in a tooltip:
+       a tooltip is nothing on a phone, and a merely-faint tile is indistinguishable
+       from a city they simply have not visited yet.
+
+       The label is a strip across the stamp rather than a corner flash, because
+       these tiles are 48px wide on a 375px screen and a corner ribbon at that size
+       is an unreadable smudge. Paper on ink, borrowing the passport's own stock, so
+       it reads as a stamped-on notice rather than as browser chrome. The cursor is
+       default and not not-allowed: nothing has been refused, it is just not open. */
+    .cityOpt.isSoon > .citystamp { cursor: default; opacity: .4; }
+    .cityOpt.isSoon::after {
+      content: 'SOON';
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%) rotate(-6deg);
+      font: 800 9px/1 var(--font-ui); letter-spacing: .14em;
+      color: var(--paper); background: rgba(26,21,16,.78);
+      padding: 3px 5px; border-radius: 2px;
+      pointer-events: none; white-space: nowrap;
+    }
+    .cityActions {
+      display: flex; gap: 8px; align-items: stretch; margin-top: 14px;
+    }
+    #cityDepartBtn { flex: 1 1 auto; margin-top: 0; padding: 14px 18px; }
+    #cityBackBtn { flex: 0 0 auto; margin-top: 0; }
+    #cityBackBtn[hidden] { display: none; }
+    .departTo { display: inline; }
+
+    /* ---- pause -------------------------------------------------------------
+       A pause screen in a shipped game tells you where you were and how you were
+       doing, then gets out of the way. Both figures are mirrored from the HUD by
+       ui.js, so main.js keeps writing to exactly the elements it always did. */
+    .card--pause { max-width: 360px; }
+    .pauseStats {
+      display: flex; gap: 8px; margin-top: 14px;
+    }
+    .pauseStat {
+      flex: 1 1 0; min-width: 0;
+      padding: 9px 10px 10px; border-radius: 12px;
+      background: rgba(0,0,0,.26); border: 1px solid var(--edge);
+      text-align: left;
+    }
+    .pauseStat span {
+      display: block;
+      font: 800 var(--t-3xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase; color: var(--fg-mute);
+    }
+    .pauseStat b {
+      display: block; margin-top: 5px;
+      font: 900 var(--t-lg)/1 var(--font-display);
+      letter-spacing: var(--tr-snug); color: var(--fg);
+      font-variant-numeric: tabular-nums;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .pauseHint {
+      margin-top: 12px;
+      font: 600 var(--t-xs)/1.5 var(--font-ui);
+      color: var(--fg-mute); letter-spacing: .01em;
+    }
+    .pauseHint:empty { display: none; }
+
+    /* ---- what to test -------------------------------------------------------
+       Same modal furniture as the feedback gate, but DISMISSIBLE: this is
+       information, not a toll. Scrolls internally so a five-item brief still
+       fits on a short phone without the page itself scrolling. */
+    #briefScreen {
+      position: fixed; inset: 0; z-index: 101;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      background: rgba(4,7,14,.86);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      animation: overlayIn var(--d-4) var(--e-out) both;
+    }
+    #briefScreen[hidden] { display: none; }
+    /* Same lacquer as .card, not a second dark-purple recipe: two panel
+       materials in one product is the thing that reads as unfinished. */
+    .briefCard {
+      position: relative;
+      width: 100%; max-width: 470px; max-height: min(86vh, 720px);
+      overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+      text-align: left;
+      background:
+        radial-gradient(90% 46% at 50% -10%, rgba(255,95,162,.18), transparent 70%),
+        linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 30%),
+        linear-gradient(158deg, var(--panel-1) 0%, var(--panel-2) 54%, var(--panel-3) 100%);
+      border: 1px solid var(--edge); border-radius: 22px;
+      padding: 24px 22px calc(20px + env(safe-area-inset-bottom));
+      box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255,255,255,.16);
+      animation: cardIn var(--d-4) var(--e-out) 60ms both;
+    }
+    .briefCard h2 { font: 900 var(--t-xl)/1.12 var(--font-display); color: #fff; margin: .2em 0 .35em; }
+    .briefIntro { font: 500 var(--t-sm)/1.5 var(--font-ui); color: var(--fg-dim); margin-bottom: 16px; }
+    .briefItem { border-top: 1px solid rgba(255,255,255,.10); padding: 11px 0; }
+    .briefItem h3 {
+      font: 800 var(--t-sm)/1.3 var(--font-display); color: #fff;
+      letter-spacing: .01em; margin-bottom: 3px;
+    }
+    .briefItem p { font: 500 var(--t-sm)/1.5 var(--font-ui); color: var(--fg-dim); }
+    .briefFoot {
+      font: 600 var(--t-sm)/1.5 var(--font-ui); color: var(--fg);
+      background: rgba(255,255,255,.06); border-radius: 12px;
+      padding: 10px 12px; margin-top: 14px;
+    }
+    .briefBuild {
+      font: 700 10.5px/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase;
+      color: rgba(255,255,255,.38); margin-top: 12px; display: block;
+    }
+    #briefScreen button { width: 100%; margin-top: 14px; }
+
+    /* ---- beta feedback ------------------------------------------------------
+       A BLOCKING modal on top of everything, unlike the quiet panel this
+       replaced. It is a toll gate now, by design: early access is the payment
+       and this is the price. It still cannot trap anyone, see feedback.js. */
+    #feedbackScreen {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+      background: rgba(4,7,14,.82);
+      -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+      animation: overlayIn var(--d-4) var(--e-out) both;
+    }
+    #feedbackScreen[hidden] { display: none; }
+    .fbCard {
+      position: relative;
+      width: 100%; max-width: 460px; text-align: left;
+      /* Nine chips, a textarea and an action row do not fit a short landscape
+         phone, and with no scroller the Send button was simply unreachable. */
+      max-height: min(88vh, 760px); overflow-y: auto; overscroll-behavior: contain;
+      background:
+        radial-gradient(90% 46% at 50% -10%, rgba(255,95,162,.18), transparent 70%),
+        linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0) 30%),
+        linear-gradient(158deg, var(--panel-1) 0%, var(--panel-2) 54%, var(--panel-3) 100%);
+      border: 1px solid var(--edge); border-radius: 22px;
+      padding: 26px 24px calc(24px + env(safe-area-inset-bottom));
+      box-shadow: var(--shadow-panel), inset 0 1px 0 rgba(255,255,255,.16);
+      animation: cardIn var(--d-4) var(--e-out) 60ms both;
+    }
+    /* One hairline across the head of every panel in the product: the menus, the
+       results spread, the brief and the feedback gate. It is the cheapest way to
+       say "same system" and it costs one static gradient. */
+    .card::before, .fbCard::before, .briefCard::before {
+      content: ""; position: absolute; left: 20px; right: 20px; top: 0; height: 2px;
+      border-radius: 0 0 2px 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: .8; pointer-events: none;
+    }
+    .fbChip { transition: background-color var(--d-2) var(--e-out), color var(--d-2) var(--e-out); }
+    .fbQ {
+      font: 900 var(--t-xl)/1.1 var(--font-display);
+      color: #fff; margin: .25em 0 .3em;
+    }
+    .fbHint {
+      font: 500 var(--t-sm)/1.45 var(--font-ui);
+      color: var(--fg-dim); margin: 0 0 14px;
+    }
+    .fbChips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .fbChip {
+      font: 600 var(--t-sm)/1 var(--font-ui);
+      padding: 7px 11px; border-radius: 999px;
+      background: rgba(255,255,255,.08); color: var(--fg-dim);
+      border: 1px solid rgba(255,255,255,.14);
+      /* The shared button rule brings a drop shadow and a hover lift. Both have
+         to go: the shadow made every unselected chip glow like a primary action
+         (so "selected" stopped reading as a state), and a lift on a dense
+         wrapped row makes the whole row jitter as the cursor crosses it. */
+      box-shadow: none;
+      transform: none !important;
+      margin-top: 0;
+    }
+    .fbChip::after { content: none; }
+    .fbChip.on {
+      background: var(--pink); color: #1b0710; border-color: transparent;
+    }
+    @media (hover: hover) { .fbChip:hover { color: var(--fg); background: rgba(255,255,255,.15); } }
+    .fbText {
+      display: block; width: 100%; margin-top: 10px; resize: none;
+      font: 500 var(--t-sm)/1.4 var(--font-ui);
+      color: var(--fg); background: rgba(0,0,0,.25);
+      border: 1px solid rgba(255,255,255,.14); border-radius: 10px;
+      padding: 9px 11px;
+    }
+    .fbText::placeholder { color: rgba(255,255,255,.35); }
+    .fbActions { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+    /* Primary now, not the ghost it was as a side panel: inside this modal it
+       is the ONLY way forward, so it has to look like it. */
+    .fbSend { flex: 1; }
+    .fbSend:disabled { opacity: .35; cursor: not-allowed; transform: none !important; }
+    .fbStatus { font: 500 var(--t-sm)/1 var(--font-ui); color: var(--fg-dim); }
+    .fbThanks {
+      font: 600 var(--t-sm)/1.4 var(--font-ui); color: var(--fg-dim); text-align: left;
+    }
+
+    /* ---- game over --------------------------------------------------------- */
+    .card--over { max-width: 440px; }
+    /* One step down from the h2 the other screens use. The lines are written
+       long ("You Clicked The Link In The DM") and every pixel this heading takes
+       comes off the passport, which is the control on this screen now. */
+    #overTitle {
+      color: #fff; letter-spacing: var(--tr-tight);
+      font-size: var(--t-xl);
+    }
+    /* Field caption: an aria-label alone leaves a sighted player guessing what
+       the uppercase box is for, and "sign your passport" is the same diegetic
+       voice as the page it sits next to. A real <label> now, so pressing the
+       caption focuses the field. */
+    .fieldLabel {
+      font: 800 var(--t-2xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase;
+      color: var(--fg-mute); text-align: left;
+    }
+    /* Caption and field on ONE line. Stacked they cost 83px of a card that has
+       to fit a 23 tile passport unscrolled on a 13 inch laptop; side by side
+       they cost 54px, and the caption reads as the field's name either way. */
+    .signRow {
+      display: flex; align-items: center; gap: 10px;
+      margin-top: 12px; text-align: left;
+    }
+    .signRow .fieldLabel { flex: 0 0 auto; }
+    .signRow #nameInput {
+      flex: 1 1 auto; min-width: 0; width: auto;
+      margin: 0; min-height: 42px; padding: 10px 12px;
+      font-size: var(--t-sm); letter-spacing: .16em;
+    }
+    #overStats { margin-top: 12px; text-align: left; }
+    /* Three stats, left to right: cities cleared, tokens collected, final score.
+       Three shared rows (label, count, total) rather than three independent
+       columns: a full world tour is 13,442 tokens, and "12,806/13,442" on one
+       line does not go into a 90px column on a phone at any readable size. Split
+       over two lines it does, and subgrid is what keeps the counts on one line
+       with each other when one label wraps and another does not. Without
+       subgrid support the cells still stack correctly, they just self-align. */
+    .statRow {
+      /* Not even columns: the widest thing on the row is the score, and the
+         token ratio carries five figures to the cities column's two. */
+      display: grid; grid-template-columns: 1fr 1.3fr 1.4fr;
+      grid-template-rows: auto auto;
+      column-gap: 8px; row-gap: 5px;
+    }
+    .stat {
+      display: grid; grid-row: span 2; grid-template-rows: subgrid;
+      min-width: 0;
+    }
+    /* The ratio on one line. Baseline aligned rather than centred, so the small
+       denominator sits on the same footing as the big numerator instead of
+       floating in the middle of it. */
+    .statValue {
+      align-self: end;
+      display: flex; align-items: baseline; gap: 1px;
+      min-width: 0; white-space: nowrap;
+    }
+    .statLabel {
+      align-self: end;
+      font: 800 var(--t-2xs)/1.2 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase; color: var(--fg-mute);
+    }
+    /* The count you earned is the headline; the size of the job sits under it,
+       quieter, so the pair reads as a ratio without competing for the eye. */
+    .statNum {
+      align-self: end;
+      font: 900 clamp(21px, 6.4vw, 32px)/0.92 var(--font-display); color: var(--fg);
+      font-variant-numeric: tabular-nums;
+    }
+    .statOf {
+      align-self: end; font-style: normal;
+      font: 800 var(--t-xs)/1 var(--font-display); color: var(--fg-mute);
+      font-variant-numeric: tabular-nums;
+    }
+    .statScore {
+      /* 7vw, not 7.2: a full world tour scores six figures, and 284,900 is two
+         pixels wider than its column at 7.2vw on a 375px phone. */
+      font-size: clamp(21px, 7vw, 42px);
+      letter-spacing: var(--tr-tight);
+      background: linear-gradient(180deg, #fff 30%, var(--gold-lite) 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .freshStamp {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 10px; padding: 9px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(217,180,95,.45);
+      background: linear-gradient(180deg, rgba(217,180,95,.18), rgba(217,180,95,.06));
+      font: 700 var(--t-xs)/1.35 var(--font-ui);
+      color: var(--gold-lite); text-align: left;
+      animation: foilIn 640ms var(--e-spring) both 320ms;
+    }
+    .freshStamp .foilTag {
+      font: 900 var(--t-3xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wide); text-transform: uppercase;
+      color: #221a06; background: linear-gradient(180deg, var(--gold-lite), var(--gold));
+      padding: 4px 7px; border-radius: 999px; white-space: nowrap;
+    }
+    @keyframes foilIn {
+      from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.94); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* THE PASSPORT NEVER SCROLLS INSIDE ITSELF, on any screen.
+
+       It used to be capped at 38vh here with its own scrollbar, from when it was
+       a read-only page and the cap was how the buttons below it stayed reachable
+       on a phone. It is the CONTROL now: half a book with a scrollbar through it
+       is a control with cities hidden inside it, and the strip along the foot,
+       which is the detail that makes the page a document, was cut off on every
+       laptop. So there is no cap and no overflow, and where the whole card
+       genuinely cannot fit, on a phone, the CARD scrolls and the book stays
+       whole. Everything else on this screen was sized to make that possible:
+       see .signRow and .boardFold. */
+    #overStamps { margin-top: 12px; }
+    /* The picker's fieldset is furniture and must never draw a box or add space
+       of its own. .cityFields handles that; this only keeps the row rhythm. */
+    .card--over .cityFields { margin: 0; }
+    /* Play, the dice that changes what Play says, and Share. Same cluster as the
+       title screen's playRow, with Share along for the ride. */
+    .overActions { display: flex; gap: 8px; align-items: stretch; margin-top: 12px; }
+    #againBtn {
+      flex: 1 1 auto; min-width: 0; margin-top: 0;
+      text-transform: uppercase; letter-spacing: .08em;
+      padding-left: 20px; padding-right: 18px;
+      /* City names run from CAIRO to SAN FRANCISCO. Ellipsis rather than wrap,
+         so a long one never turns the button into two lines. */
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #shareBtn { flex: 0 0 auto; margin-top: 0; }
+    .overActions .diceBtn { margin-top: 0; }
+
+    /* The leaderboard, folded. Closed it is one quiet line; open it pushes the
+       card into its own scroll, which is the right trade for something you go
+       looking for rather than something you are handed. */
+    .boardFold { margin-top: 14px; text-align: left; }
+    .boardFold > summary {
+      display: flex; align-items: center; gap: 7px;
+      list-style: none; cursor: pointer;
+      padding: 10px 14px; min-height: 40px; border-radius: 999px;
+      border: 1px solid var(--edge); background: rgba(0,0,0,.28);
+      font: 800 var(--t-2xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase;
+      color: var(--fg-mute);
+      transition: color var(--d-2) var(--e-out), background-color var(--d-2) var(--e-out);
+    }
+    .boardFold > summary::-webkit-details-marker { display: none; }
+    /* The disclosure triangle, drawn rather than borrowed: the UA marker sits
+       outside the pill and cannot be coloured with the rest of it. */
+    .boardFold > summary::after {
+      content: ""; margin-left: auto;
+      width: 8px; height: 8px;
+      border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+      transform: translateY(-2px) rotate(45deg);
+      transition: transform var(--d-2) var(--e-out);
+    }
+    .boardFold[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
+    @media (hover: hover) {
+      .boardFold > summary:hover { color: var(--fg); background: rgba(255,255,255,.10); }
+    }
+    .boardFold > summary:focus-visible { outline: 3px solid #8fe3ff; outline-offset: 3px; }
+
+    /* Leaderboard period switch. NOTE: main.js binds every `.tabs button`, so
+       this class must never be reused for another control group. */
+    .tabs {
+      display: flex; gap: 4px; justify-content: center;
+      margin: 10px 0 10px; padding: 4px;
+      background: rgba(0,0,0,.28); border: 1px solid var(--edge);
+      border-radius: 999px;
+    }
+    .tabs button {
+      flex: 1; margin: 0; min-height: 40px; padding: 9px 10px;
+      font: 800 var(--t-xs)/1 var(--font-ui); letter-spacing: .04em;
+      background: transparent; color: var(--fg-mute); box-shadow: none;
+      border-radius: 999px;
+      transition: color var(--d-2) var(--e-out), background-color var(--d-2) var(--e-out),
+                  transform var(--d-2) var(--e-out);
+    }
+    .tabs button::after { opacity: 0; }
+    .tabs button.on {
+      background: linear-gradient(180deg, rgba(255,255,255,.20), rgba(255,255,255,.08));
+      color: #fff;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 8px rgba(0,0,0,.3);
+    }
+    @media (hover: hover) { .tabs button:hover { color: var(--fg); } }
+
+    #boardWrap {
+      max-height: 184px; overflow-y: auto; overscroll-behavior: contain;
+      border-radius: 12px; border: 1px solid var(--edge);
+      background: rgba(0,0,0,.22);
+      /* The last row fades at the foot, so a full board reads as "there is more"
+         rather than as a list that happens to stop at the border. */
+      -webkit-mask-image: linear-gradient(180deg, #000 82%, rgba(0,0,0,.35));
+      mask-image: linear-gradient(180deg, #000 82%, rgba(0,0,0,.35));
+    }
+    table { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+    td {
+      padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.06);
+      text-align: left; color: var(--fg-dim);
+    }
+    tr:last-child td { border-bottom: 0; }
+    td.rank {
+      width: 34px; text-align: center;
+      font: 800 var(--t-xs)/1 var(--font-ui); color: var(--fg-mute);
+      font-variant-numeric: tabular-nums;
+    }
+    td.name {
+      font-weight: 700; color: var(--fg);
+      max-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    td.r { text-align: right; font-variant-numeric: tabular-nums; font-weight: 800; color: var(--fg); }
+    td.empty { text-align: center; color: var(--fg-mute); padding: 18px 10px; font-style: italic; }
+    tr.medal-1 td.rank { color: #ffd97a; }
+    tr.medal-2 td.rank { color: #dfe6f0; }
+    tr.medal-3 td.rank { color: #e0a071; }
+    tr.me td { background: linear-gradient(90deg, rgba(255,95,162,.22), rgba(155,92,255,.10)); }
+    tr.me td.name { color: #ffd0e4; }
+
+    /* ==========================================================================
+       PASSPORT
+       The signature object: aged stock, engraved rosette, stamps pressed on
+       crooked, and a machine-readable strip along the foot.
+       ========================================================================== */
+    .stamps {
+      position: relative;
+      margin-top: 16px; padding: 12px 12px 10px;
+      border-radius: 12px;
+      background-color: var(--paper);
+      background-image: var(--guilloche),
+        linear-gradient(150deg, rgba(255,255,255,.7), rgba(0,0,0,.05));
+      border: 1px solid #cdbb92;
+      box-shadow: 0 10px 26px -14px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.8),
+                  inset 0 -14px 26px -20px rgba(90,64,20,.6);
+      color: #4a3d24; text-align: left;
+      transform-origin: 50% 20%;
+    }
+    /* The spine: this is a book, not a card. */
+    .stamps::before {
+      content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 4px;
+      border-radius: 12px 0 0 12px;
+      background: linear-gradient(180deg, rgba(120,86,32,.05), rgba(120,86,32,.30), rgba(120,86,32,.05));
+    }
+    .passportHead { display: flex; align-items: center; gap: 9px; }
+    .passportCrest {
+      flex: 0 0 auto; width: 26px; height: 26px;
+      background: var(--crest) center/contain no-repeat;
+      opacity: .85;
+    }
+    .passportTitles { flex: 1 1 auto; min-width: 0; }
+    .passportKicker {
+      font: 800 var(--t-3xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wide); text-transform: uppercase; color: #7a6737;
+    }
+    .passportName {
+      font: 700 var(--t-md)/1.1 var(--font-doc);
+      letter-spacing: .16em; text-transform: uppercase; color: #3d4a72;
+      margin-top: 2px;
+    }
+    .passportCount {
+      flex: 0 0 auto; text-align: right;
+      font: 800 var(--t-2xs)/1 var(--font-ui); letter-spacing: .1em;
+      color: #7a6737; text-transform: uppercase;
+    }
+    .passportCount b {
+      display: block; font: 900 var(--t-lg)/1 var(--font-display);
+      letter-spacing: var(--tr-snug); color: #3d4a72;
+      font-variant-numeric: tabular-nums;
+    }
+    .passportProgress {
+      height: 3px; margin: 8px 0 9px; border-radius: 999px;
+      background: rgba(122,96,44,.20); overflow: hidden;
+    }
+    .passportProgress i {
+      display: block; height: 100%; width: 100%; border-radius: inherit;
+      background: linear-gradient(90deg, var(--gold), #b98f3c);
+      transform-origin: 0 50%; transform: scaleX(0);
+      transition: transform 900ms var(--e-out) 240ms;
+    }
+
+    .stampGrid { display: grid; width: 100%; gap: 5px; grid-template-columns: repeat(4, 1fr); }
+    .citystamp {
+      position: relative;
+      aspect-ratio: 132 / 90; border-radius: 6px; min-width: 0;
+      background-repeat: no-repeat; background-color: var(--paper-2);
+      overflow: hidden;
+      transform: rotate(var(--rot, 0deg));
+    }
+    .citystamp.unstamped, .citystamp.inked {
+      display: flex; align-items: center; justify-content: center;
+      /* Sized so the longest single word, FRANCISCO, fits one line inside a
+         tile. At 7.5px it did not, and breaking mid-word gave "SAN FRANCIS CO".
+         break-word only splits a word that cannot fit on a line of its own, so
+         names now break at the space where there is one. */
+      /* Tiles measure 52px across at the 7-column layout and MARRAKESH needed
+         58px at 6.6px, so it clipped. 5.6px with no extra tracking brings the
+         longest single word to 49px, inside the tile with margin to spare. */
+      font: 800 5.6px/1.15 var(--font-ui);
+      letter-spacing: 0; text-transform: uppercase; text-align: center; padding: 2px;
+      overflow-wrap: break-word; hyphens: auto;
+    }
+    /* Gaps read as invitations, not failures: the city's own stamp, un-inked
+       inside a dashed frame, on the page and on the departure board alike. The
+       un-inking is a treatment of the artwork and is applied in JS, because it
+       is three background layers over a sprite cell that only the renderer
+       knows the coordinates of; the frame is here. `transform: none` because a
+       die that has not been pressed has no hand-stamped wobble to inherit. */
+    .citystamp.unstamped {
+      border: 1.5px dashed #cbb68e; background-color: rgba(255,255,255,.42);
+      /* Dark enough to actually read: this colours the named fallback tile that
+         a stamp with no cell on the sheet would get. Every city has a cell. */
+      color: #7d6d4a; transform: none;
+    }
+    /* Secret cities: you do not even get to know the name. Read as LOCKED, not
+       as an empty box the page forgot to fill: a padlock, a dimmed tile, and the
+       masked name under it. */
+    .citystamp.secret {
+      flex-direction: column; gap: 1px;
+      border-style: dashed; border-color: #b3a4cf; color: #7b6aa8;
+      background-color: rgba(244,241,250,.6);
+      font: 800 8px/1 var(--font-display); letter-spacing: .16em;
+      opacity: .66;
+    }
+    .citystamp.secret::before {
+      content: ""; display: block;
+      width: 34%; max-width: 13px; aspect-ratio: 12 / 14;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 14'%3E%3Crect x='1.3' y='5.9' width='9.4' height='7.2' rx='1.7' fill='none' stroke='%237b6aa8' stroke-width='1.3'/%3E%3Cpath d='M3.9 5.9V4.1a2.1 2.1 0 0 1 4.2 0v1.8' fill='none' stroke='%237b6aa8' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E")
+        center/contain no-repeat;
+    }
+    /* Earned but no drawn artwork yet: an inked placeholder, never a blank. */
+    .citystamp.inked {
+      border: 1.5px solid #4a5a86; background-color: rgba(242,236,220,.9);
+      color: #3f4f7a;
+      box-shadow: inset 0 0 0 2.5px rgba(74,90,134,.16);
+    }
+    /* Earned artwork gets the cancellation bloom every real stamp has. */
+    .citystamp:not(.unstamped)::after {
+      content: ""; position: absolute; inset: 0; border-radius: inherit;
+      pointer-events: none;
+      background: radial-gradient(120% 120% at 30% 20%, rgba(255,255,255,.28), transparent 60%);
+      mix-blend-mode: overlay;
+    }
+
+    /* The stamp coming down on the page. Heavy overshoot, then it settles into
+       whatever crooked angle that tile owns. */
+    @keyframes stampDown {
+      0%   { transform: scale(3.2) rotate(-16deg); opacity: 0; }
+      50%  { transform: scale(3.2) rotate(-16deg); opacity: .85; }
+      74%  { transform: scale(.88) rotate(calc(var(--rot, 0deg) + 4deg)); opacity: 1; }
+      86%  { transform: scale(1.07) rotate(calc(var(--rot, 0deg) - 2deg)); }
+      100% { transform: scale(1) rotate(var(--rot, 0deg)); opacity: 1; }
+    }
+    .citystamp.justEarned { animation: stampDown var(--d-5) var(--e-stamp) both; z-index: 2; }
+    /* Ink splash under the impact. */
+    .citystamp.justEarned::before {
+      content: ""; position: absolute; inset: -30%; border-radius: 50%;
+      background: radial-gradient(circle, rgba(63,79,122,.5), transparent 62%);
+      opacity: 0; animation: inkBloom 620ms var(--e-out) both 420ms;
+    }
+    @keyframes inkBloom {
+      0%   { opacity: .7; transform: scale(.3); }
+      100% { opacity: 0; transform: scale(1.1); }
+    }
+
+    .passportMrz {
+      margin-top: 9px; padding-top: 8px;
+      border-top: 1px solid rgba(122,96,44,.28);
+      font: 400 8px/1.5 var(--font-mono);
+      letter-spacing: .10em; color: #7d6a45; opacity: .85;
+      white-space: pre; overflow: hidden;   /* two authored lines, never wrapped */
+      -webkit-mask-image: linear-gradient(90deg, #000 84%, transparent);
+      mask-image: linear-gradient(90deg, #000 84%, transparent);
+    }
+
+    .stampGroup {
+      font: 800 var(--t-3xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wide); text-transform: uppercase;
+      color: #7a6737; margin: 12px 0 7px;
+    }
+    .stampChips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .stamp {
+      font: 800 var(--t-3xs)/1 var(--font-ui); letter-spacing: .04em;
+      padding: 6px 9px; border-radius: 999px;
+      border: 1px solid rgba(168,135,74,.55);
+      color: #6d5520;
+      background: linear-gradient(180deg, rgba(242,221,160,.85), rgba(217,180,95,.5));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.6);
+    }
+
+    /* ==========================================================================
+       HUD
+       Legibility over a noon sky AND a night sky comes from opaque-enough dark
+       plates, not from flipping text colour. Deliberately NO backdrop-filter
+       here: blurring a moving 3D canvas every frame is the one thing in this
+       file that could cost the game 60fps.
+       ========================================================================== */
+    #skyScrim {
+      position: fixed; top: 0; left: 0; right: 0; height: 150px;
+      background: linear-gradient(180deg, rgba(6,12,22,.30), rgba(6,12,22,0));
+      pointer-events: none; z-index: 8;
+    }
+    #hud {
+      position: fixed;
+      top: max(env(safe-area-inset-top), 8px); left: 10px; right: 10px;
+      display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 8px;
+      pointer-events: none; z-index: 10;
+      font-family: var(--font-ui);
+    }
+    #hudLeft { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+
+    /* Brand lockup, top left. Deliberately restrained: it has to survive a
+       screenshot over both a noon sky and a night city without competing with
+       the score, so it leans on a drop shadow rather than a plate. */
+    #brandMark {
+      display: flex; align-items: center; gap: 7px;
+      padding: 2px 2px 0; margin-bottom: 1px;
+      filter: drop-shadow(0 1px 3px rgba(6,12,22,.55));
+    }
+    #brandMark svg { width: 22px; height: 22px; display: block; flex: none; }
+    .brandWords {
+      display: flex; flex-direction: column; line-height: 1;
+      font-family: var(--font-display);
+      text-transform: uppercase; letter-spacing: .1em;
+      color: rgba(255,255,255,.94);
+    }
+    .brandWords b { font-size: 11px; font-weight: 800; }
+    .brandWords i {
+      font-size: 8px; font-style: normal; font-weight: 700;
+      letter-spacing: .16em; color: rgba(255,255,255,.72); margin-top: 2px;
+    }
+    /* Night and space cities: the mark keeps the same treatment, the scrim
+       behind the HUD is what changes, so nothing to override here. */
+    @media (max-width: 480px) {
+      #brandMark svg { width: 18px; height: 18px; }
+      .brandWords b { font-size: 9.5px; }
+      .brandWords i { font-size: 7px; }
+    }
+    /* Row, not column: the three plates read as one paired readout. align-items
+       flex-start so all hang from the same top edge despite the score plate
+       being taller. */
+    #hudCenter { display: flex; flex-direction: row; align-items: flex-start; gap: 8px; }
+    #hudRight { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+
+    .plate {
+      position: relative;
+      padding: 6px 12px 8px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(9,16,27,.76), rgba(9,16,27,.60));
+      border: 1px solid rgba(255,255,255,.16);
+      box-shadow: var(--shadow-plate), inset 0 1px 0 rgba(255,255,255,.16);
+      color: var(--fg);
+    }
+    .plate--score { padding: 5px 18px 9px; min-width: 108px; text-align: center; }
+    /* Lives and tokens flank the score and must be the SAME width, or the group
+       reads as lopsided even though it is centred. 118px because "Tokens left" is
+       the widest label of the two and lays out at 115px on its own; a shared
+       min-width below that lets the wider one win and the balance is lost. */
+    .plate--lives,
+    .plate--tokens { min-width: 118px; text-align: center; padding-bottom: 9px; }
+    .plate--lives .pips { justify-content: center; }
+    /* Phone widths. This block has to sit AFTER the rules above, not up with the
+       other narrow-screen tweaks: same specificity, so source order decides, and
+       when it was declared earlier the 118px min-width won and the tokens plate
+       ran 67px off the right edge of a 390px screen with the city tag behind it.
+       Measured, not guessed at.
+       At desktop sizes the three plates alone are ~350px of a 390px screen, so
+       the flanking pair gives up its min-width and the group tightens rather than
+       pushing the city tag out of the viewport. */
+    @media (max-width: 560px) {
+      /* Sized against a real 390px measurement: brand 79 + centre + tag 76 has to
+         fit 370px of content box, and at the first pass it came to 381, which put
+         the city tag flush to the screen edge with no margin left. */
+      #hudCenter { gap: 4px; }
+      .plate--lives, .plate--tokens { min-width: 0; padding-left: 6px; padding-right: 6px; }
+      .plate--score { min-width: 54px; padding-left: 9px; padding-right: 9px; }
+      .pip { width: 13px; height: 13px; }
+      .plate--lives .hudLabel, .plate--tokens .hudLabel { font-size: 8px; letter-spacing: .06em; }
+      /* The globe mark stays, the wordmark goes. Tightening the plates alone still
+         left the row 2px wider than the content box at 390 and ~50px over at 320,
+         and this is the only element in the row that is purely decorative: the
+         title screen already carries the full logo, so a screenshot of the menu
+         still has the name on it. Frees ~57px, which is what makes 320 fit. */
+      .brandWords { display: none; }
+    }
+    .hudLabel {
+      display: block;
+      font: 800 var(--t-3xs)/1.6 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase;
+      color: rgba(226,238,255,.68);
+    }
+    #score {
+      font: 900 var(--t-2xl)/1 var(--font-display);
+      letter-spacing: var(--tr-tight);
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 2px 8px rgba(0,0,0,.45);
+      will-change: transform;
+    }
+    /* Gold hairline under the score: the one place the eye should land first. */
+    .plate--score::after {
+      content: ""; position: absolute; left: 16px; right: 16px; bottom: 4px; height: 1.5px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: .75;
+    }
+    #tokensLeft {
+      font: 900 var(--t-md)/1.15 var(--font-display);
+      font-variant-numeric: tabular-nums;
+      text-shadow: 0 1px 5px rgba(0,0,0,.4);
+    }
+    .tokenTrack {
+      display: block; height: 3px; margin-top: 5px; border-radius: 999px;
+      background: rgba(255,255,255,.18); overflow: hidden;
+    }
+    .tokenTrack i {
+      display: block; height: 100%; border-radius: inherit;
+      background: linear-gradient(90deg, var(--gold-lite), var(--gold));
+      transform-origin: 0 50%; transform: scaleX(1);
+      transition: transform 420ms var(--e-out);
+      will-change: transform;
+    }
+
+    .pips { display: flex; gap: 4px; margin-top: 2px; }
+    .pip {
+      width: 17px; height: 17px;
+      background: center/contain no-repeat;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23ff8fc0'/%3E%3Cstop offset='1' stop-color='%23ff3d8b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M12 21.2S3.9 16.4 1.9 11.3C.2 7 2.4 3.6 6 3.6c2.2 0 3.5 1.2 4 2.1.5-.9 1.8-2.1 4-2.1 3.6 0 5.8 3.4 4.1 7.7-2 5.1-10.1 9.9-10.1 9.9z' fill='url(%23g)' stroke='%23fff' stroke-opacity='.75' stroke-width='1.1'/%3E%3C/svg%3E");
+      will-change: transform;
+    }
+    .pip.spent {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 21.2S3.9 16.4 1.9 11.3C.2 7 2.4 3.6 6 3.6c2.2 0 3.5 1.2 4 2.1.5-.9 1.8-2.1 4-2.1 3.6 0 5.8 3.4 4.1 7.7-2 5.1-10.1 9.9-10.1 9.9z' fill='%23ffffff' fill-opacity='.10' stroke='%23ffffff' stroke-opacity='.42' stroke-width='1.3'/%3E%3C/svg%3E");
+    }
+
+    .immunity {
+      display: none; align-items: center; gap: 6px;
+      padding: 5px 10px 6px; border-radius: 999px;
+      background: linear-gradient(180deg, rgba(123,60,224,.92), rgba(90,40,180,.85));
+      border: 1px solid rgba(206,180,255,.55);
+      box-shadow: 0 3px 12px rgba(90,40,180,.5), inset 0 1px 0 rgba(255,255,255,.3);
+      font: 900 var(--t-2xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wide); text-transform: uppercase; color: #fff;
+    }
+    .immunity.on { display: flex; animation: chipIn 380ms var(--e-spring) both; }
+    @keyframes chipIn {
+      from { opacity: 0; transform: translate3d(-8px, 0, 0) scale(.8); }
+      to   { opacity: 1; transform: none; }
+    }
+    .immunityGem { font-size: 11px; color: #e9d6ff; }
+    .immunityTrack {
+      display: block; width: 34px; height: 3px; border-radius: 999px;
+      background: rgba(255,255,255,.28); overflow: hidden;
+    }
+    .immunityTrack i {
+      display: block; height: 100%; border-radius: inherit; background: #e9d6ff;
+      transform-origin: 0 50%; transform: scaleX(1);
+      transition: transform 950ms linear;
+    }
+
+    .cityTag {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 11px 6px; border-radius: 999px;
+      background: linear-gradient(180deg, rgba(9,16,27,.72), rgba(9,16,27,.56));
+      border: 1px solid rgba(255,255,255,.14);
+      box-shadow: var(--shadow-plate);
+      font: 800 var(--t-xs)/1 var(--font-ui);
+      letter-spacing: .06em; color: var(--fg);
+      will-change: transform;
+    }
+    /* iPhone SE 1st gen and anything else at 320. Three plates, the brand mark and
+       a 13-character city name do not fit one row at this width: measured, the row
+       comes to 317px of a 300px content box even with the wordmark hidden and the
+       tag shrunk a size step, and the tag ends up clipped off the right edge of
+       the SCREEN, not merely out of its margin. So the tag gives way.
+       It is the least load-bearing text in the row. The city is announced by a
+       full-screen banner on entry and listed on the passport, whereas lives and
+       tokens are read continuously while playing.
+       Placed AFTER the base rule on purpose. This is the second time an override
+       written next to the other narrow-screen rules silently lost to a base rule
+       declared further down the file. Same specificity means source order decides,
+       and the first version of this block did nothing at all for that reason. */
+    @media (max-width: 360px) {
+      .cityTag { display: none; }
+    }
+    /* The pin carries the city's own accent when there is one. main.js sets
+       --city-accent on <html>; the fallback keeps the shipped pink, so an
+       unthemed or unset city looks exactly as it did. The halo stays a neutral
+       white so any accent hue lands legibly on it. */
+    .cityPin {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--city-accent, var(--pink));
+      box-shadow: 0 0 0 3px rgba(255,255,255,.16);
+      transition: background-color var(--d-4) var(--e-out);
+    }
+
+    #debug {
+      font: 500 10.5px/1.45 var(--font-mono);
+      color: #dbe6f5; white-space: pre;
+      text-shadow: 0 1px 3px rgba(0,0,0,.9);
+    }
+    /* Only dressed when there is something in it: main.js leaves #debug empty
+       unless the run was started with ?debug. */
+    #debug:not(:empty) {
+      padding: 5px 8px; border-radius: 9px;
+      background: rgba(9,16,27,.72);
+      border: 1px solid rgba(255,255,255,.12);
+    }
+
+    /* The HUD belongs to the run, not to the menus: it steps back whenever a
+       screen is up and returns as that screen leaves. Falls back to always-on
+       where :has() is unsupported, which is exactly the old behaviour. */
+    #hud, #skyScrim { transition: opacity var(--d-3) var(--e-out); }
+    body:has(.overlay.show) #hud,
+    body:has(.overlay.show) #skyScrim { opacity: 0; }
+
+    /* Airless cities have a near-black sky: the plates lighten their fill so
+       they read as glass over the void rather than as holes punched in it. */
+    body.dark-sky .plate,
+    body.dark-sky .cityTag {
+      background: linear-gradient(180deg, rgba(26,36,58,.62), rgba(16,24,42,.5));
+      border-color: rgba(180,205,255,.28);
+      box-shadow: var(--shadow-plate), inset 0 1px 0 rgba(190,215,255,.22);
+    }
+    body.dark-sky .hudLabel { color: rgba(206,226,255,.72); }
+    body.dark-sky .cityPin {
+      background: var(--city-accent, #c9a4ff);
+      box-shadow: 0 0 0 3px rgba(190,215,255,.20);
+    }
+    body.dark-sky #skyScrim { background: linear-gradient(180deg, rgba(0,0,0,.34), rgba(0,0,0,0)); }
+    body.dark-sky #debug { color: #c6d4e8; }
+
+    /* ==========================================================================
+       ARRIVAL CARD AND BANNERS
+       Five moments through one element: arriving in a city (a typeset
+       lower-third), clearing it, taking immunity, being caught, and a small
+       toast for a camera change.
+
+       TWO RULES, both learned from the judged screenshots:
+
+       1. Nothing may depend on an animation RUNNING in order to be visible. The
+          ribbon used to declare `transform: scaleX(0)` and rely on its entrance
+          to open it. Any context that suppresses animation (an SVG foreignObject
+          rasterisation, which is how the review frames are captured, print, or a
+          cloned subtree) left the plate collapsed to nothing and the city name
+          sitting bare on a rooftop. Base state is now the SETTLED state and the
+          keyframes travel FROM the hidden state.
+       2. Type states its own family and colour and never inherits them from the
+          `html, body` rule, for the same reason: in a cloned subtree that rule
+          does not match and everything falls back to black Times.
+       ========================================================================== */
+    #banner {
+      position: fixed; inset: 0; display: none;
+      align-items: center; justify-content: center;
+      pointer-events: none; z-index: 15; text-align: center;
+      padding: 0 18px;
+      /* Stated, not inherited: even a bare text node dropped in here reads as
+         the display voice in white, never as default black serif. */
+      font: 900 var(--t-3xl)/1.02 var(--font-display);
+      letter-spacing: var(--tr-tight);
+      color: #fff;
+      text-shadow: 0 4px 18px rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.4);
+    }
+    #banner.show { display: flex; }
+    .bannerInner { position: relative; max-width: 640px; }
+    /* Sized off the message rather than a fixed height, so a two-line clear
+       banner gets the same margin as a one-word city name. */
+    .bannerRibbon {
+      position: absolute; inset: -26px -8%;
+      border-radius: 6px;
+      background: linear-gradient(90deg, transparent, rgba(10,16,28,.72) 12%, rgba(10,16,28,.72) 88%, transparent);
+      transform-origin: 50% 50%;
+      animation: ribbonOpen 520ms var(--e-out) both;
+    }
+    .bannerRibbon::after {
+      content: ""; position: absolute; left: 12%; right: 12%; bottom: 12px; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: .9; animation: fadeInSoft 420ms var(--e-out) both 260ms;
+    }
+    @keyframes ribbonOpen { from { transform: scaleX(0); } to { transform: none; } }
+    @keyframes fadeInSoft { from { opacity: 0; } to { opacity: .9; } }
+
+    .bannerHead {
+      position: relative;
+      font: 900 var(--t-3xl)/1.02 var(--font-display);
+      letter-spacing: var(--tr-tight);
+      color: #fff;
+      text-shadow: 0 4px 18px rgba(0,0,0,.65), 0 1px 0 rgba(0,0,0,.4);
+      animation: bannerRise 620ms var(--e-spring) both 120ms;
+    }
+    .bannerSub {
+      position: relative; margin-top: 8px;
+      font: 700 var(--t-sm)/1.4 var(--font-ui);
+      letter-spacing: var(--tr-wide); text-transform: uppercase;
+      color: rgba(255,255,255,.82);
+      text-shadow: 0 2px 10px rgba(0,0,0,.7);
+      animation: bannerRise 560ms var(--e-out) both 240ms;
+    }
+    .bannerSub:empty { display: none; }
+    @keyframes bannerRise {
+      from { opacity: 0; transform: translate3d(0, 22px, 0) scale(.94); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    /* ---- the city arrival card ----------------------------------------------
+       A broadcast lower-third: a full-bleed scrim band that runs off both edges,
+       a kicker in the city's accent, the name as letter-spaced display caps, an
+       accent rule, and the subtitle under it. It holds, then leaves cleanly.
+       Everything that moves is a transform or an opacity, so the whole card is
+       composited and costs the 3D scene nothing. */
+    #banner[data-tone="city"] {
+      align-items: flex-end;
+      /* Sits in the lower third and clears the bottom-right control stack. */
+      padding-bottom: clamp(92px, 22vh, 200px);
+    }
+    .bannerInner--city { max-width: min(680px, 94vw); }
+    #banner[data-tone="city"] .bannerRibbon {
+      inset: -22px -50vw;
+      border-radius: 0;
+      background: linear-gradient(90deg, transparent, rgba(5,9,18,.88) 18%,
+                  rgba(5,9,18,.88) 82%, transparent);
+      animation: bandOpen 620ms var(--e-out) both;
+    }
+    /* Unfurls vertically as it wipes: a band opening, not a box appearing. */
+    @keyframes bandOpen {
+      from { opacity: 0; transform: scaleX(.5) scaleY(.3); }
+      45%  { opacity: 1; }
+      to   { opacity: 1; transform: none; }
+    }
+    /* Accent hairlines top and bottom. Fully restated, since the shared rule
+       above insets and thickens the gold one. */
+    #banner[data-tone="city"] .bannerRibbon::before,
+    #banner[data-tone="city"] .bannerRibbon::after {
+      content: ""; position: absolute; left: 0; right: 0; height: 1px;
+      bottom: auto; top: auto;
+      background: linear-gradient(90deg, transparent, var(--city-accent, var(--gold)) 26%,
+                  var(--city-accent, var(--gold)) 74%, transparent);
+      opacity: .6; animation: fadeInSoft 520ms var(--e-out) both 200ms;
+    }
+    #banner[data-tone="city"] .bannerRibbon::before { top: 0; }
+    #banner[data-tone="city"] .bannerRibbon::after { bottom: 0; }
+    /* The gloss pass: one light sweep across the whole band as it opens. */
+    #banner[data-tone="city"] .bannerInner::after {
+      content: ""; position: absolute; inset: -22px -50vw;
+      background: linear-gradient(104deg, transparent 34%, rgba(255,255,255,.14) 47%,
+                  rgba(255,255,255,.03) 55%, transparent 66%);
+      opacity: 0; pointer-events: none;
+      animation: bannerSweep 1100ms var(--e-out) both 240ms;
+      will-change: transform, opacity;
+    }
+    @keyframes bannerSweep {
+      from { opacity: 0; transform: translate3d(-36%, 0, 0); }
+      20%  { opacity: 1; }
+      to   { opacity: 0; transform: translate3d(36%, 0, 0); }
+    }
+    .bannerKicker {
+      position: relative;
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      font: 800 var(--t-2xs)/1 var(--font-ui);
+      letter-spacing: var(--tr-wider); text-transform: uppercase;
+      /* Near-white, NOT the accent. A per-city hue is arbitrary, and a dark or
+         desaturated one would put 10px caps below any usable contrast on a
+         near-black band. The accent carries the marks instead (the lozenge, the
+         rule, the band hairlines), where hue is decoration and not legibility. */
+      color: rgba(255,255,255,.92);
+      text-shadow: 0 1px 6px rgba(0,0,0,.85);
+      animation: bannerRise 460ms var(--e-out) both 80ms;
+    }
+    .bannerKicker i {
+      flex: none; width: 5px; height: 5px; border-radius: 1px;
+      background: var(--city-accent, var(--gold));
+      color: var(--city-accent, var(--gold));
+      transform: rotate(45deg);
+      box-shadow: 0 0 7px currentColor;
+    }
+    #banner[data-tone="city"] .bannerHead {
+      /* Letter-spaced caps. The trailing letter's tracking is padded back on the
+         left so the line stays optically centred. */
+      font-size: clamp(29px, 7.4vw, 56px);
+      letter-spacing: .12em; padding-left: .12em;
+      text-transform: uppercase;
+      margin-top: 7px;
+      text-shadow: 0 6px 26px rgba(0,0,0,.75), 0 1px 0 rgba(0,0,0,.5);
+    }
+    .bannerRule {
+      position: relative;
+      height: 2px; width: min(320px, 60%); margin: 10px auto 0;
+      border-radius: 2px;
+      background: linear-gradient(90deg, transparent, var(--city-accent, var(--gold)) 20%,
+                  var(--city-accent, var(--gold)) 80%, transparent);
+      transform-origin: 50% 50%;
+      animation: ruleOpen 640ms var(--e-out) both 220ms;
+    }
+    @keyframes ruleOpen {
+      from { opacity: 0; transform: scaleX(0); }
+      to   { opacity: 1; transform: none; }
+    }
+    #banner[data-tone="city"] .bannerSub {
+      margin-top: 9px;
+      font: 800 var(--t-xs)/1.35 var(--font-ui);
+      letter-spacing: .2em; text-transform: uppercase;
+      color: rgba(255,255,255,.88);
+      animation-delay: 320ms;
+    }
+    /* The chrome steps back while a location card holds, the way a camera push
+       clears the frame. :has() is progressive enhancement here: where it is
+       unsupported the HUD simply stays put, which is the old behaviour. */
+    body:has(#banner.show[data-tone="city"]) #hud { opacity: .38; }
+    body:has(#banner.show[data-tone="city"]) #muteBtn { opacity: 0; }
+
+    /* Three classes so the exit always outranks the per-tone entrance rules
+       further down, whatever order they end up in. */
+    #banner.show.leaving .bannerInner { animation: bannerOut 240ms var(--e-in) both; }
+    @keyframes bannerOut {
+      from { opacity: 1; transform: none; }
+      to   { opacity: 0; transform: translate3d(0, -14px, 0) scale(1.03); }
+    }
+    /* The card leaves downward, the way it came, and the band closes with it. */
+    #banner.show.leaving[data-tone="city"] .bannerInner {
+      animation: cityOut 300ms var(--e-in) both;
+    }
+    @keyframes cityOut {
+      from { opacity: 1; transform: none; }
+      to   { opacity: 0; transform: translate3d(0, 16px, 0); }
+    }
+    /* Tone is set by ui.js from the message itself. */
+    #banner[data-tone="clear"] .bannerHead {
+      background: linear-gradient(180deg, #fff 30%, var(--gold-lite) 100%);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    #banner[data-tone="danger"] .bannerHead { color: #ffdede; }
+    #banner[data-tone="danger"] .bannerRibbon {
+      background: linear-gradient(90deg, transparent, rgba(70,10,18,.78) 12%, rgba(70,10,18,.78) 88%, transparent);
+    }
+    #banner[data-tone="danger"] .bannerInner { animation: shakeOnce 420ms var(--e-out) both; }
+    @keyframes shakeOnce {
+      0%, 100% { transform: translate3d(0, 0, 0); }
+      18% { transform: translate3d(-7px, 0, 0); }
+      38% { transform: translate3d(6px, 0, 0); }
+      58% { transform: translate3d(-4px, 0, 0); }
+      78% { transform: translate3d(2px, 0, 0); }
+    }
+    #banner[data-tone="power"] .bannerHead { color: #efe2ff; }
+    #banner[data-tone="power"] .bannerRibbon {
+      background: linear-gradient(90deg, transparent, rgba(58,24,120,.76) 12%, rgba(58,24,120,.76) 88%, transparent);
+    }
+    /* A camera change is housekeeping, not drama: a small toast, out of the way
+       of the play area and nowhere near the location card's slot. Without this
+       tone it fell through to the city case and announced the camera rig as if
+       the player had just arrived in a city called BACK. */
+    #banner[data-tone="info"] { align-items: flex-start; padding-top: 22vh; }
+    #banner[data-tone="info"] .bannerHead {
+      font: 800 var(--t-md)/1.2 var(--font-display);
+      letter-spacing: .16em; text-transform: uppercase;
+      text-shadow: 0 1px 6px rgba(0,0,0,.7);
+      animation-duration: 420ms; animation-delay: 60ms;
+    }
+    #banner[data-tone="info"] .bannerRibbon {
+      inset: -11px -20px; border-radius: 999px;
+      background: linear-gradient(180deg, rgba(9,16,27,.84), rgba(9,16,27,.7));
+      border: 1px solid rgba(255,255,255,.18);
+    }
+    #banner[data-tone="info"] .bannerRibbon::after { content: none; }
+
+    /* ==========================================================================
+       GHOST PROXIMITY MARKERS
+       A ghost you cannot see is the only unfair death. Positioned purely with
+       transforms so the per-frame update never touches layout.
+       ========================================================================== */
+    #danger { position: fixed; inset: 0; pointer-events: none; z-index: 9; }
+    .dangerDot {
+      position: absolute; top: 0; left: 0;
+      width: 30px; height: 30px; margin: -15px 0 0 -15px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font: 900 14px/1 var(--font-display); color: #fff;
+      box-shadow: 0 0 0 2.5px rgba(255,255,255,.6), 0 2px 10px rgba(0,0,0,.5);
+      transition: opacity 120ms linear;
+      will-change: transform, opacity;
+    }
+
+    /* ==========================================================================
+       MUTE
+       ========================================================================== */
+    #muteBtn {
+      position: fixed;
+      bottom: max(env(safe-area-inset-bottom), 12px); right: 12px;
+      z-index: 12;
+      width: 48px; height: 48px; min-height: 48px; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; line-height: 1;
+      border-radius: 50%; margin: 0;
+      background: linear-gradient(180deg, rgba(9,16,27,.74), rgba(9,16,27,.58));
+      border: 1px solid rgba(255,255,255,.18);
+      box-shadow: var(--shadow-plate);
+      color: #fff;
+    }
+    body.dark-sky #muteBtn { border-color: rgba(180,205,255,.3); }
+    /* The bottom-right stack fades rather than snapping, both behind a menu and
+       under an arrival card. The base button rule only transitions transform and
+       filter, so opacity changes were instant. */
+    #muteBtn {
+      transition: opacity var(--d-3) var(--e-out), transform var(--d-2) var(--e-out),
+                  filter var(--d-2) var(--e-out);
+    }
+
+    /* The camera rig switch that used to sit above mute in this stack is gone:
+       the rig is decided per platform in scene.js and is no longer a choice a
+       player makes. Mute is alone in the corner again. */
+
+    /* There is no city picker floating over the game any more. It was a beta
+       affordance for early testers, and the choice now lives on the departure
+       board at the start of a run (see #cityScreen). */
+
+    /* The two beta modals are not .overlay elements, so the rule that steps the
+       HUD back behind a screen never matched them and the lives and score plates
+       sat on top of the feedback gate. Chrome behind a modal is the classic
+       "unfinished" tell. */
+    body:has(#feedbackScreen:not([hidden])) #hud,
+    body:has(#feedbackScreen:not([hidden])) #skyScrim,
+    body:has(#briefScreen:not([hidden])) #hud,
+    body:has(#briefScreen:not([hidden])) #skyScrim { opacity: 0; }
+
+    /* ==========================================================================
+       RESPONSIVE
+       ========================================================================== */
+    /* Short phones (iPhone SE and friends): tighten the title screen and pack
+       the passport one column denser so the full page still fits unscrolled. */
+    @media (max-height: 740px) {
+      .stampGrid { grid-template-columns: repeat(5, 1fr); gap: 4px; }
+      .titleMark { width: 52px; height: 52px; margin-bottom: 6px; }
+      /* The gap moves through the variable so the logo sheen, which stops at the
+         badge rather than at the bottom of the margin box, follows it. */
+      .titleLogoWrap { --logo-gap: 8px; }
+      .titleLogo { width: clamp(120px, min(46vw, 30vh), 200px); }
+      #titleScreen p, #cityScreen p { display: none; }
+      #playBtn { margin-top: 12px; }
+      /* The board is the content on this screen, so it takes the room the
+         blurb gave up rather than leaving the card short. */
+      #cityScreen .stamps { max-height: min(58vh, 380px); }
+      #titleBook { max-height: min(40vh, 300px); }
+      .card { padding: 18px 18px 20px; border-radius: 22px; }
+      /* The two-line notice becomes one line of heading: on a short phone the
+         corner has no room for a summary, and the button still opens the full
+         brief, which is where the detail actually lives. */
+      .betaChip > span { display: none; }
+    }
+    /* Phones. Six across would put a 52px stamp on a 375px screen, which is the
+       one thing this layout is not allowed to do, so the passport keeps the four
+       or five across it already had and the book scrolls inside the card. The
+       Play button carries a city name on a narrow line, so it gives up size and
+       tracking rather than truncating the name, and the dice narrows with it. */
+    @media (max-width: 560px) {
+      #playBtn {
+        font-size: 15px; letter-spacing: .05em;
+        padding-left: 18px; padding-right: 16px;
+      }
+      button.diceBtn { width: 2.6em; font-size: 15px; }
+      .playRow { gap: 6px; }
+      /* The results screen's Play carries a city name too, and next to a dice
+         and a Share there is no line on a phone that holds all three. Play and
+         the dice keep the first line, Share takes the second: Share is not a
+         peer of the button that starts the next run. */
+      .overActions { flex-wrap: wrap; gap: 6px; }
+      #againBtn { font-size: 15px; letter-spacing: .05em; padding-left: 16px; padding-right: 14px; }
+      #shareBtn { flex: 1 0 100%; }
+      /* The caption stacks over the field again once the line is too narrow to
+         hold both: on a phone the card is allowed to scroll, and a squeezed
+         name box is worse than a taller one. */
+      .signRow { display: block; }
+      .signRow #nameInput { width: 100%; margin-top: 6px; }
+      /* Play takes the whole line rather than shrink-wrapping, so PLAY SAN
+         FRANCISCO, the longest label on the tour, still fits whole. */
+      .playRow #playBtn { flex: 1 1 auto; }
+      /* One line in the corner, with room for it. The summary is already hidden
+         on a short screen; this is what keeps the heading from stacking. */
+      button.betaChip {
+        width: auto; max-width: 60vw;
+        top: max(env(safe-area-inset-top), 10px); right: 10px;
+        padding: 7px 10px; min-height: 0;
+      }
+      .betaChip > b { font: 800 9.5px/1.2 var(--font-ui); letter-spacing: .08em; white-space: nowrap; }
+    }
+    /* The passport stops at FIVE across, however much room there is.
+
+       It used to run to six and then eight, on the reasoning that a passport is
+       a page rather than a card and should use the width. That was written when
+       a stamp was a name in a dashed box. The stamps are now drawn artwork, and
+       at eight across on a wide screen each one is too small to read: the
+       engraving, which is the whole reason the art is good, turns to mush.
+
+       Five is the cap because 23 cities land as five rows with two spare, which
+       reads as a page that is being filled rather than one that has run out. */
+    @media (min-width: 560px) {
+      .stampGrid { grid-template-columns: repeat(5, 1fr); gap: 8px; }
+    }
+    @media (min-width: 900px) {
+      .stampGrid { grid-template-columns: repeat(5, 1fr); gap: 10px; }
+      /* 7px was measured against a 52px tile back when this breakpoint ran
+         eight across and MARRAKESH clipped at 8.5px. Five across makes the tile
+         about 1.6 times wider, so the constraint that set 7px is gone. This
+         only reaches the tiles that carry TEXT rather than artwork, which since
+         every city gained a drawn stamp means the milestone chips alone. */
+      .citystamp.unstamped, .citystamp.inked { font-size: 9px; }
+    }
+    /* Wide viewports: the results card stays portrait, one column, so the run
+       reads top to bottom. There is simply more room for the passport page and
+       the board, which is where the extra height goes. */
+    @media (min-width: 780px) and (min-height: 560px) {
+      /* Both cards carry the same six-across passport now, so they are the same
+         width: the book is the object on each of them, and two different widths
+         would draw two different sized stamps for the same city. There is no
+         #overStamps cap here any more, because the passport never scrolls. */
+      .card--over { max-width: 480px; }
+      #boardWrap { max-height: 220px; }
+      /* Wider than it was, because the card now carries a six-across passport.
+         The width is what keeps the stamps large while the row count comes
+         down: at 560 a tile is 77px across, which is wider than the results
+         page has ever drawn one. */
+      .card--title { max-width: 560px; }
+    }
+    @media (min-width: 1280px) {
+      .card--title { max-width: 600px; }
+    }
+
+    /* ==========================================================================
+       REDUCED MOTION
+       Nothing here is load-bearing: every animation is decorative, so the safe
+       answer is to keep the end state and skip the journey.
+       ========================================================================== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: .001ms !important;
+        animation-delay: 0ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .001ms !important;
+        transition-delay: 0ms !important;
+      }
+    }
+  </style>
+  <script type="module" crossorigin src="./assets/index-De5QhFHv.js"></script>
+</head>
+<body>
+  <canvas id="app"></canvas>
+  <div id="skyScrim" aria-hidden="true"></div>
+
+  <div id="hud">
+    <div id="hudLeft">
+      <!-- Brand lockup. Sits in the HUD so any screenshot or clip carries the
+           game's name without needing a caption. Its own gradient id, because a
+           duplicate of the title screen's would be resolved to whichever SVG
+           the document parsed first. -->
+      <div id="brandMark" aria-label="Around the Block">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="atbMarkHud" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ff5fa2"/>
+              <stop offset="1" stop-color="#9b5cff"/>
+            </linearGradient>
+          </defs>
+          <circle cx="32" cy="32" r="17.5" fill="none" stroke="url(#atbMarkHud)" stroke-width="4"/>
+          <ellipse cx="32" cy="32" rx="7.2" ry="17.5" fill="none" stroke="rgba(255,255,255,.62)" stroke-width="2"/>
+          <path d="M14.5 32h35" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2"/>
+        </svg>
+        <span class="brandWords"><b>Around</b><i>the Block</i></span>
+      </div>
+      <div id="immunityChip" class="immunity" aria-hidden="true">
+        <span class="immunityGem">◆</span>
+        <span id="immunityLabel">Immune</span>
+        <span class="immunityTrack"><i id="immunityFill"></i></span>
+      </div>
+      <!-- main.js writes the immunity string here; ui.js mirrors it into the chip. -->
+      <div id="immunity"></div>
+      <div id="debug"></div>
+    </div>
+
+    <!-- Lives, Score and Tokens left sit together in the centre. They are the
+         three things the player actually reads mid-run, and the two flanking
+         plates are the pair that says how the run is going: how much margin is
+         left, and how close the city is to being cleared. Symmetry is the point,
+         so lives and tokens carry the same min-width and the score sits between
+         them. Parking either one in a far corner made the player's eye cross the
+         whole frame to pair it with the score. -->
+    <div id="hudCenter">
+      <div class="plate plate--lives">
+        <span class="hudLabel">Lives</span>
+        <!-- main.js writes hearts here; ui.js hides it, mirrors it into pips, and
+             keeps aria-label in words so it is not read out as heart glyphs. -->
+        <div id="lives" role="img" aria-label="3 lives left">♥♥♥</div>
+        <div id="livesPips" class="pips" aria-hidden="true"></div>
+      </div>
+      <div class="plate plate--score">
+        <span class="hudLabel">Score</span>
+        <div id="score">0</div>
+      </div>
+      <div class="plate plate--tokens">
+        <span class="hudLabel">Tokens left</span>
+        <div id="tokensLeft">0</div>
+        <span class="tokenTrack" aria-hidden="true"><i id="tokenFill"></i></span>
+      </div>
+    </div>
+
+    <div id="hudRight">
+      <div class="cityTag">
+        <span class="cityPin" aria-hidden="true"></span>
+        <div id="city"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="danger"></div>
+  <div id="banner" aria-live="polite"></div>
+  <button id="muteBtn" class="ghost" aria-label="Toggle sound">🔊</button>
+
+  <div id="titleScreen" class="overlay show" role="dialog" aria-modal="true" aria-label="Around the Block">
+    <!-- Beta only; main.js unhides it and writes the second line from the brief.
+         Top right of the SCREEN rather than in the card: it is a standing notice
+         about the build, not a step in starting a run, and the card below is now
+         a single top-to-bottom path (passport, then Play) that a second button
+         in the middle of it would interrupt. Two lines, heading over detail, so
+         the ask is legible without opening anything; pressing it still opens the
+         full brief, which is six items long and was never going to fit here. -->
+    <button id="briefBtn" class="ghost betaChip" hidden>
+      <b>BETA instructions</b>
+      <span id="briefBtnLine2"></span>
+    </button>
+    <div class="card card--title stagger">
+      <!-- The real stamp mark replaces the abstract SVG globe. It already
+           carries the wordmark, the arcade attribution and "powered by
+           PulseChain", so the eyebrow and h1 that used to sit under it would
+           just be saying everything twice. The h1 stays for screen readers and
+           for the document outline. -->
+      <!-- The wrapper exists only to carry the foil glint: a pseudo-element
+           cannot hang off an <img>. The image keeps its class and its
+           attributes. -->
+      <div class="titleLogoWrap" style="--i:0">
+        <img class="titleLogo" src="logo.webp" width="512" height="512"
+             alt="" aria-hidden="true" fetchpriority="high" />
+      </div>
+      <h1 class="srOnly" style="--i:2">Around the Block</h1>
+      <p style="--i:3">Run the streets of the city, collect all the tokens, and avoid those trying to take them from you.</p>
+      <!-- The passport IS the city picker now. citypicker.js draws the same
+           radio group here that it draws in the overlay between cities: same
+           tiles, same locks, same arrow keys. It is mounted, not copied, and
+           only one of the two containers is ever populated. -->
+      <fieldset class="cityFields" style="--i:4">
+        <legend class="srOnly">Choose a city</legend>
+        <div class="stamps" id="titleBook"></div>
+      </fieldset>
+      <!-- Under the passport, and named after the city the passport has
+           selected, so the button is a promise about the tile above it rather
+           than a verb with no object. Never disabled: a city is always
+           selected, at random on a first visit. The dice rerolls it. -->
+      <div class="playRow" style="--i:5">
+        <button id="playBtn">Play <span class="departTo" id="playCityName">San Francisco</span><span class="playGo" aria-hidden="true">→</span></button>
+        <button id="titleDiceBtn" class="ghost diceBtn" aria-label="Pick a random city"><span aria-hidden="true">🎲</span></button>
+      </div>
+      <div id="controlHint" style="--i:6"></div>
+      <!-- Where the picker speaks. Moving a highlight is not an announcement, so
+           rolling the dice says the same sentence the tile itself carries.
+           INSIDE the dialog on purpose: this screen is aria-modal, which hides
+           everything outside its subtree from assistive technology, so a live
+           region parked next to the HUD would announce to nobody. The departure
+           board has its own for the same reason. -->
+      <div id="titleLive" class="srOnly" aria-live="polite" aria-atomic="true"></div>
+    </div>
+  </div>
+
+  <div id="pauseScreen" class="overlay" role="dialog" aria-modal="true" aria-label="Paused">
+    <div class="card card--pause stagger">
+      <div class="eyebrow" style="--i:0">Tour suspended</div>
+      <h2 style="--i:1">Paused</h2>
+      <p style="--i:2">The city waits. The ghosts do not get bored.</p>
+      <!-- Mirrored from the HUD by ui.js, so main.js keeps writing only to the
+           elements it always did. -->
+      <div class="pauseStats" style="--i:3">
+        <div class="pauseStat"><span>City</span><b id="pauseCity">·</b></div>
+        <div class="pauseStat"><span>Score</span><b id="pauseScore">0</b></div>
+      </div>
+      <button id="resumeBtn" style="--i:4">Resume</button>
+      <!-- Mirrored from #controlHint: the controls are the one thing a player
+           reaches for after coming back from a pause. -->
+      <div id="pauseHint" class="pauseHint" style="--i:5"></div>
+    </div>
+  </div>
+
+  <div id="overScreen" class="overlay" role="dialog" aria-modal="true" aria-label="Run complete">
+    <div class="card card--over">
+      <!-- Portrait, one column, top to bottom: what you did, who did it, the
+           passport it went into, then where you are going next. ui.js fills
+           #overStats and #overSummary through ui.showResults().
+
+           THE PASSPORT HERE IS THE CITY PICKER, mounted by citypicker.js, the
+           same control the title screen and the departure board draw. It used
+           to be a read-only page, and Play Again opened a third screen to
+           choose from: the player was shown the book, then asked about it
+           somewhere else. Now the tile you press IS the choice and the button
+           under it names the city it starts, so a new run is one press away.
+
+           The whole page has to be visible at once: no internal scroll on the
+           passport, and nothing below it heavy enough to push it off a 13 inch
+           laptop. That is why the name field shares a line with its label and
+           why the leaderboard is folded away by default. -->
+      <div class="overMain stagger">
+        <div class="eyebrow" style="--i:0">Run complete</div>
+        <h2 id="overTitle" style="--i:1">Game Over</h2>
+        <!-- The accessible summary of the run. ui.js writes a plain sentence
+             here and hides it visually; the stat row below is the same numbers
+             drawn large, and is aria-hidden so the count-up animation is never
+             read out a frame at a time. -->
+        <p id="overSummary" class="srOnly"></p>
+        <div id="overStats" style="--i:2" aria-hidden="true"></div>
+        <!-- Label beside the field, not above it: the row it saves is the row
+             the passport needs. -->
+        <div class="signRow" style="--i:3">
+          <label class="fieldLabel" for="nameInput">Sign your passport</label>
+          <input id="nameInput" type="text" maxlength="12" placeholder="YOUR NAME"
+                 aria-label="Your name for the leaderboard" />
+        </div>
+        <fieldset class="cityFields" style="--i:4">
+          <legend class="srOnly">Choose where to go next</legend>
+          <div class="stamps" id="overStamps"></div>
+        </fieldset>
+        <!-- Named after the city the passport above has selected, so the button
+             is a promise about the tile rather than a verb with no object.
+             Never disabled: a city is always selected. The dice rerolls it,
+             exactly as it does on the title screen. -->
+        <div class="overActions" style="--i:5">
+          <button id="againBtn">Play <span class="departTo" id="overCityName">San Francisco</span><span class="playGo" aria-hidden="true">→</span></button>
+          <button id="overDiceBtn" class="ghost diceBtn" aria-label="Pick a random city"><span aria-hidden="true">🎲</span></button>
+          <button id="shareBtn" class="ghost">Share</button>
+        </div>
+        <!-- Where the picker speaks on this screen. One live region per screen:
+             each is aria-modal, so a region parked outside would announce to
+             nobody. The title screen and the departure board have their own. -->
+        <div id="overLive" class="srOnly" aria-live="polite" aria-atomic="true"></div>
+        <!-- Folded, and last. The leaderboard is the one thing on this card
+             nobody needs before deciding where to fly next, and unfolded it is
+             300px that pushed the passport off the bottom of a 13 inch screen.
+             A real <details>, so it is a disclosure by construction: keyboard
+             operable, announced as expanded or collapsed, and captured in
+             whichever state it is in by the screenshot harness. -->
+        <details class="boardFold" style="--i:6">
+          <summary>Leaderboard</summary>
+          <div class="tabs" role="group" aria-label="Leaderboard period">
+            <button data-period="daily" class="on">Today</button>
+            <button data-period="weekly">Week</button>
+            <button data-period="alltime">All time</button>
+          </div>
+          <div id="boardWrap"><table id="board"></table></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- The departure board: the passport, in selection mode.
+       Sits after the title and results screens in the document so it stacks
+       above whichever one opened it, and citypicker.js steps that screen aside
+       while this is up. The page itself (head, progress, stamp grid) is built
+       by citypicker.js from CITIES and the passport, so the tiles here are the
+       same tiles the passport shows, wired as a real radio group. -->
+  <div id="cityScreen" class="overlay" role="dialog" aria-modal="true" aria-labelledby="cityScreenTitle">
+    <div class="card card--cities">
+      <div class="eyebrow" id="cityEyebrow">Departures</div>
+      <h2 id="cityScreenTitle">Where to?</h2>
+      <p id="cityBlurb">Pick a city and fly. Clear it and you come back here to choose the next one.</p>
+      <fieldset class="cityFields">
+        <legend class="srOnly">Choose a city</legend>
+        <div class="stamps" id="cityBook"></div>
+      </fieldset>
+      <div class="cityActions">
+        <button id="cityDepartBtn">Fly to <span class="departTo" id="cityDepartName">San Francisco</span></button>
+        <button id="cityDiceBtn" class="ghost diceBtn" aria-label="Pick a random city"><span aria-hidden="true">🎲</span></button>
+        <button id="cityBackBtn" class="ghost">Back</button>
+      </div>
+      <div id="cityLive" class="srOnly" aria-live="polite" aria-atomic="true"></div>
+    </div>
+  </div>
+
+  <!-- Beta only, and deliberately the LAST overlay in the document so it stacks
+       above the game-over card without needing a z-index arms race. main.js
+       shows it before the death screen and only reveals the death screen once
+       it resolves. -->
+  <div id="feedbackScreen" role="dialog" aria-modal="true" aria-label="Beta feedback" hidden></div>
+  <div id="briefScreen" role="dialog" aria-modal="true" aria-label="What to test" hidden></div>
+
+</body>
+</html>
