@@ -280,7 +280,12 @@ const APP_STORE_URL = 'https://apps.apple.com/app/ching-ching/id1622965914';
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
 const ALLOC_COLORS = ['#3987e5','#199e70','#c98500','#008300','#9085e9','#e66767','#d55181','#d95926'];
 const ALLOC_OTHER = '#6E7794';
-const HISTORY_TOKEN_CAP = 12;
+// Our own Worker. Ethereum has no free CORS-readable daily price history, so the
+// browser cannot build an ETH series directly; the Worker fetches it server-side
+// and caches it. Without this the chart was PulseChain-only while the headline
+// counted every chain, and the two numbers openly disagreed.
+const HISTORY_WORKER = 'https://hexstats.chingching.xyz/pricehistory';
+const HISTORY_TOKEN_CAP = 40;
 const TOP_N = 5; // rows shown before "show all"
 const DUST_USD = 1;      // hide any holding/position worth less than $1
 const MIN_LIQ_USD = 100; // hide tokens whose DEX liquidity is under $100
@@ -333,7 +338,10 @@ let showAbsolute = true;
 let showAllTokens = false;
 let sparkPoints = null;
 let holdersCache = {};
-let currentHistory = {};  // pulsechain addr -> [{date,price}]
+// chain -> { addr -> [{date,price}] }, newest-first, dates at UTC midnight so the
+// chains line up and can be summed day by day.
+let currentHistory = { pulsechain: {}, ethereum: {} };
+const historyFor = (chain, addr) => currentHistory[chain]?.[addr];
 let currentStakes = null; // null=loading, []=none, [...]=HEX stakes
 let currentLP = null;     // null=loading, []=none, [...]=LP positions
 let showAllStakes = false, showAllLP = false, showTreemap = false;
@@ -389,6 +397,32 @@ async function fetchPrices(chain, addresses) {
   }
   return prices;
 }
+/// Derive d7/d30 percentage moves from a { addr: [{date,price}] } map (newest-first).
+function changesFromHistory(byToken) {
+  const now = Math.floor(Date.now()/1000), d7t = now - 7*86400;
+  const changes = {};
+  for (const [a, days] of Object.entries(byToken)) {
+    if (days.length < 2) continue; const newest = days[0].price; if (newest<=0) continue;
+    const d7 = days.reduce((b,d)=>Math.abs(d.date-d7t)<Math.abs(b.date-d7t)?d:b), d30 = days[days.length-1];
+    changes[a] = { d7: d7.price>0?((newest-d7.price)/d7.price)*100:0, d30: d30.price>0?((newest-d30.price)/d30.price)*100:0 };
+  }
+  return changes;
+}
+
+/// Daily price history via our Worker. Used for Ethereum, which has no
+/// browser-reachable history source of its own.
+async function fetchHistoricalViaWorker(chain, addresses) {
+  const out = { byToken:{}, changes:{} };
+  if (!addresses.length) return out;
+  try {
+    const url = `${HISTORY_WORKER}?chain=${encodeURIComponent(chain)}&days=30&addresses=${addresses.join(',')}`;
+    const j = await (await fetch(url)).json();
+    out.byToken = j?.byToken || {};
+    out.changes = changesFromHistory(out.byToken);
+  } catch(e) { console.error('worker history fetch failed', chain, e); }
+  return out;
+}
+
 /// PulseChain-only daily price history (PulseX v2 subgraph). Returns { byToken, changes }.
 async function fetchHistorical(addresses) {
   const out = { byToken:{}, changes:{} };
@@ -402,12 +436,9 @@ async function fetchHistorical(addresses) {
       const a = r.token.id.toLowerCase();
       (out.byToken[a] = out.byToken[a] || []).push({ date:parseInt(r.date), price:parseFloat(r.priceUSD) });
     }
-    const d7t = now - 7*86400;
-    for (const [a, days] of Object.entries(out.byToken)) {
-      if (days.length < 2) continue; const newest = days[0].price; if (newest<=0) continue;
-      const d7 = days.reduce((b,d)=>Math.abs(d.date-d7t)<Math.abs(b.date-d7t)?d:b), d30 = days[days.length-1];
-      out.changes[a] = { d7: d7.price>0?((newest-d7.price)/d7.price)*100:0, d30: d30.price>0?((newest-d30.price)/d30.price)*100:0 };
-    }
+    // The subgraph returns each day's close keyed by a UTC-midnight date, which
+    // is the same grid the Worker snaps to, so the two chains align.
+    out.changes = changesFromHistory(out.byToken);
   } catch(e) { console.error('history fetch failed', e); }
   return out;
 }
@@ -421,13 +452,14 @@ function chainCount(chain) { return currentTokens.filter(t => t.chain === chain)
 
 function hexChangeFor(chain, period) {
   if (period === 'h24') return hexMeta[chain]?.h24 || 0;
-  if (chain === 'pulsechain') { // d7/d30 from HEX token history when available, else flat
-    const days = currentHistory[HEX_ADDR];
-    if (days && days.length >= 2 && days[0].price > 0) {
-      const now = days[0].price, t = Math.floor(Date.now()/1000) - (period === 'd7' ? 7 : 30) * 86400;
-      const row = days.reduce((b, d) => Math.abs(d.date - t) < Math.abs(b.date - t) ? d : b);
-      if (row.price > 0) return ((now - row.price) / row.price) * 100;
-    }
+  // d7/d30 from HEX's own price history, per chain. Both chains have history
+  // now (PulseChain from the subgraph, Ethereum via the Worker), so an ETH-only
+  // wallet no longer reports its stakes as flat over 7d/30d.
+  const days = historyFor(chain, HEX_ADDR);
+  if (days && days.length >= 2 && days[0].price > 0) {
+    const now = days[0].price, t = Math.floor(Date.now()/1000) - (period === 'd7' ? 7 : 30) * 86400;
+    const row = days.reduce((b, d) => Math.abs(d.date - t) < Math.abs(b.date - t) ? d : b);
+    if (row.price > 0) return ((now - row.price) / row.price) * 100;
   }
   return 0;
 }
@@ -647,7 +679,9 @@ function renderBody() {
   currentColorMap = buildColorMap(items);
   const { abs, pct } = portfolioChange(currentPeriod);
   const diffCls = pct > 0.1 ? 'up' : pct < -0.1 ? 'down' : 'flat';
-  const showSpark = enabledChains.has('pulsechain'); // history is PulseChain-only
+  // The chart covers whatever the headline covers, so it is no longer gated on
+  // a particular chain being on.
+  const haveHistory = CHAIN_ORDER.some(c => Object.keys(currentHistory[c] || {}).length);
 
   renderChainPills();
   const now = new Date();
@@ -658,7 +692,7 @@ function renderBody() {
       <div class="total-value">${formatUSD(total)}</div>
       <div id="totalDiff" class="total-diff ${diffCls}" onclick="toggleDiffMode()">${abs>=0?'+':'-'}${formatUSD(Math.abs(abs))}</div>
     </div>
-    ${showSpark ? '<div id="sparkHost"><div class="spark-loading">reconstructing history…</div></div>' : ''}
+    <div id="sparkHost"><div class="spark-loading">reconstructing history…</div></div>
     ${renderAllocation(items, total)}
     <div class="divider"></div>
     ${renderTokensSection()}
@@ -668,7 +702,10 @@ function renderBody() {
 
   document.getElementById('periodPills').style.display = 'flex';
   updateDiffDisplay();
-  if (showSpark && lastSparkline) renderSparkline(lastSparkline.series, lastSparkline.is30dHigh);
+  // Recomputed, not replayed: toggling a chain changes which holdings the
+  // series covers, and the old code re-rendered a cached series that could not
+  // respond to the toggle at all.
+  if (haveHistory) { const r = reconstructValueHistory(); renderSparkline(r.series, r.is30dHigh); }
 }
 
 let lastSparkline = null;
@@ -691,7 +728,7 @@ function renderSparkline(series, is30dHigh) {
     <path d="${area}" fill="url(#sf)"/><path class="spark-line ${up?'up':'down'}" d="${line}"/>
     <line class="spark-cross" id="sparkCross" y1="0" y2="${H}"/><circle class="spark-dot" id="sparkDot" r="3.5" fill="${col}" stroke="#0d0d18" stroke-width="1.5"/>
     <rect class="spark-hit" x="0" y="0" width="${W}" height="${H}"/></svg>
-    <div class="spark-note"><button class="spark-q" onclick="toggleSparkNote(this)">?</button><div class="spark-pop">~30-day value, reconstructed from today's holdings at past daily prices. It shows how prices moved, not your actual past balances (buys, sells and transfers aren't included).</div></div></div>`;
+    <div class="spark-note"><button class="spark-q" onclick="toggleSparkNote(this)">?</button><div class="spark-pop">~30-day value across every chain shown, reconstructed from today's holdings and stakes at past daily prices. It shows how prices moved, not your actual past balances (buys, sells and transfers aren't included). LP positions, and anything without price history, are held flat at today's value.</div></div></div>`;
   const svg=document.getElementById('sparkSvg'), cross=document.getElementById('sparkCross'), dot=document.getElementById('sparkDot'), tip=document.getElementById('sparkTip');
   svg.addEventListener('pointermove', e=>{
     const r=svg.getBoundingClientRect(); let idx=Math.round((e.clientX-r.left)/r.width*(pts.length-1)); idx=Math.max(0,Math.min(pts.length-1,idx));
@@ -704,22 +741,67 @@ function renderSparkline(series, is30dHigh) {
   if (is30dHigh) document.getElementById('card')?.classList.add('ath'); else document.getElementById('card')?.classList.remove('ath');
 }
 
-function reconstructValueHistory(byToken) {
-  const dates=[...new Set(Object.values(byToken).flat().map(d=>d.date))].sort((a,b)=>a-b);
-  if (!dates.length) return { series:[], is30dHigh:false };
-  const plsTokens = currentTokens.filter(t=>t.chain==='pulsechain');
-  const bal={}; let weight=0;
-  for (const t of plsTokens) { const newest=byToken[t.address]?.[0]?.price; if (!newest||newest<=0) continue; bal[t.address]=t.value/newest; weight+=t.value; }
-  if (weight<=0) return { series:[], is30dHigh:false };
-  const priceOn={}; for (const [a,days] of Object.entries(byToken)) { priceOn[a]={}; for (const d of days) priceOn[a][d.date]=d.price; }
-  const series=[]; let maxVal=0;
-  for (const date of dates) {
-    let dayTotal=0, present=0;
-    for (const t of plsTokens) { if (bal[t.address]===undefined) continue; const p=priceOn[t.address]?.[date]; if (p===undefined) continue; dayTotal+=bal[t.address]*p; present+=t.value; }
-    if (present/weight < 0.6) continue; series.push({date, value:dayTotal}); if (dayTotal>maxVal) maxVal=dayTotal;
+/// Rebuild ~30 days of portfolio value across every enabled chain.
+///
+/// Everything the headline counts is represented here, so the chart and the big
+/// number describe the same portfolio: tokens and HEX stakes are replayed at
+/// past daily prices, while LP positions and any token without price history are
+/// carried flat at today's value (no history to replay, and pretending otherwise
+/// would invent movement). The series is anchored to the live total at the end,
+/// so the line always finishes exactly where the headline says it should.
+function reconstructValueHistory() {
+  const p = portfolioValue();  // already limited to the enabled chains
+  const priceOn = {}, units = [];
+  let replayable = 0, flat = p.lpVal;
+
+  const indexSeries = (chain, addr) => {
+    const days = historyFor(chain, addr);
+    if (!days?.length || !(days[0].price > 0)) return null;
+    const key = chain + ':' + addr;
+    if (!priceOn[key]) { priceOn[key] = {}; for (const d of days) priceOn[key][d.date] = d.price; }
+    return { key, newest: days[0].price, dates: days.map(d => d.date) };
+  };
+
+  const allDates = new Set();
+  for (const t of p.tokens) {
+    const s = indexSeries(t.chain, t.address);
+    // No history for this token: hold it flat rather than dropping it, so the
+    // chart's level still reflects the whole portfolio.
+    if (!s) { flat += t.value; continue; }
+    units.push({ key: s.key, qty: t.value / s.newest, value: t.value });
+    replayable += t.value; s.dates.forEach(d => allDates.add(d));
   }
-  const plsTotal = plsTokens.reduce((s,t)=>s+t.value,0);
-  return { series, is30dHigh: series.length>3 && plsTotal>=maxVal*0.99 };
+  // HEX stakes track the HEX price on their own chain.
+  for (const st of p.stakes) {
+    const s = indexSeries(st.chain, HEX_ADDR);
+    if (!s) { flat += st.value; continue; }
+    units.push({ key: s.key, qty: st.value / s.newest, value: st.value });
+    replayable += st.value; s.dates.forEach(d => allDates.add(d));
+  }
+
+  const dates = [...allDates].sort((a,b) => a-b);
+  if (!dates.length || replayable <= 0) return { series: [], is30dHigh: false };
+
+  const series = [];
+  for (const date of dates) {
+    let dayTotal = flat, present = 0;
+    for (const u of units) {
+      const price = priceOn[u.key][date];
+      if (price === undefined) continue;
+      dayTotal += u.qty * price; present += u.value;
+    }
+    // Require nearly all of the replayable value to be present. The old 60%
+    // gate let a day through missing up to 40% of the portfolio, which drew
+    // the newest point far below the headline and read as a bug.
+    if (present / replayable < 0.9) continue;
+    series.push({ date, value: dayTotal });
+  }
+  if (!series.length) return { series: [], is30dHigh: false };
+
+  // Land on the live number shown above the chart.
+  series.push({ date: Math.floor(Date.now()/1000), value: p.total });
+  const maxVal = series.reduce((m, pt) => Math.max(m, pt.value), 0);
+  return { series, is30dHigh: series.length > 3 && p.total >= maxVal * 0.99 };
 }
 
 async function fetchHolders(chain, addr) {
@@ -728,8 +810,8 @@ async function fetchHolders(chain, addr) {
   holdersCache[key] = j ? (j.holders ?? j.holders_count ?? j.token_holders_count ?? null) : null;
   return holdersCache[key];
 }
-function tokenPriceSparkline(addr) {
-  const days = currentHistory[addr]; if (!days || days.length<3) return '';
+function tokenPriceSparkline(chain, addr) {
+  const days = historyFor(chain, addr); if (!days || days.length<3) return '';
   const series=[...days].sort((a,b)=>a.date-b.date), W=300,H=88,padY=8, vals=series.map(d=>d.price), min=Math.min(...vals), max=Math.max(...vals), span=(max-min)||1, stepX=W/(series.length-1);
   const pts=series.map((d,i)=>({x:i*stepX, y:padY+(H-2*padY)*(1-(d.price-min)/span)}));
   const up=series[series.length-1].price>=series[0].price, col=up?'#34c759':'#ff3b30';
@@ -749,7 +831,7 @@ async function toggleTokenInfo(key) {
   const isNative = t.address === cfg.wrapped && t.native;
   const shownAddr = t.native ? `Native ${cfg.nativeSym} (${cfg.label})` : shortAddr(t.contractAddress||t.address);
   const copyTarget = t.contractAddress || t.address;
-  const mini = tokenPriceSparkline(t.address);
+  const mini = tokenPriceSparkline(t.chain, t.address);
   panel.innerHTML = `<div class="token-info-inner">
     <div class="stat-grid">
       <div class="stat-box"><div class="stat-k">Price</div><div class="stat-v">${formatPrice(t.price)}</div></div>
@@ -997,13 +1079,31 @@ async function loadWallet(addressOverride) {
     showAllTokens = false; lastSparkline = null; currentStakes = null; currentLP = null;
     renderBody();
     loadStakesAndLP(address);
-    // PulseChain history (7d/30d + value sparkline) in the background
-    const plsAddrs = [...new Set(currentTokens.filter(t=>t.chain==='pulsechain').sort((a,b)=>b.value-a.value).slice(0,HISTORY_TOKEN_CAP).map(t=>t.address))];
-    fetchHistorical(plsAddrs).then(hist=>{
-      currentHistory = hist.byToken;
-      for (const t of currentTokens) { const h = hist.changes[t.address]; if (h && t.chain==='pulsechain') { t.d7=h.d7; t.d30=h.d30; } }
-      const { series, is30dHigh } = reconstructValueHistory(hist.byToken);
-      if (enabledChains.has('pulsechain')) renderSparkline(series, is30dHigh);
+    // Price history for every chain, in the background (7d/30d + value chart).
+    // PulseChain reads the PulseX subgraph directly; Ethereum goes through our
+    // Worker because no free ETH history source is CORS-readable in a browser.
+    // HEX is always requested so staked value can be replayed even when the
+    // wallet holds no liquid HEX.
+    const addrsFor = (chain) => {
+      const held = currentTokens.filter(t => t.chain === chain)
+        .sort((a,b) => b.value - a.value).slice(0, HISTORY_TOKEN_CAP).map(t => t.address);
+      return [...new Set([...held, HEX_ADDR])];
+    };
+    Promise.all(CHAIN_ORDER.map(chain => {
+      const addrs = addrsFor(chain);
+      const fetcher = chain === 'pulsechain' ? fetchHistorical(addrs) : fetchHistoricalViaWorker(chain, addrs);
+      return fetcher.then(hist => ({ chain, hist }));
+    })).then(results => {
+      for (const { chain, hist } of results) {
+        currentHistory[chain] = hist.byToken;
+        for (const t of currentTokens) {
+          if (t.chain !== chain) continue;
+          const h = hist.changes[t.address];
+          if (h) { t.d7 = h.d7; t.d30 = h.d30; }
+        }
+      }
+      const { series, is30dHigh } = reconstructValueHistory();
+      renderSparkline(series, is30dHigh);
       if (currentPeriod==='d7'||currentPeriod==='d30') setPeriod(currentPeriod);
     });
   } catch(e) { renderError('Failed to load wallet data.'); console.error(e); }
