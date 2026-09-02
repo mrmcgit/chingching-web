@@ -586,18 +586,57 @@ function renderTreemap(segs, total) {
   return `<div class="tm-box">${cells}</div>`;
 }
 
+// EIP-55 checksum (js-sha3 is already loaded for PNS). The curated logo repos
+// key their files by checksummed address.
+function toChecksumAddress(addr) {
+  const a = String(addr).toLowerCase().replace(/^0x/, '');
+  const hash = keccak_256(a);
+  let out = '0x';
+  for (let i = 0; i < a.length; i++) out += parseInt(hash[i], 16) >= 8 ? a[i].toUpperCase() : a[i];
+  return out;
+}
+
+// Token icon sources, tried in order. DexScreener moved its image host
+// (dd.dexscreener.com now 301s to cdn.dexscreener.com) and has no image at all
+// for the bridged tokens most PulseChain wallets hold (WETH, WBTC), so this is
+// the same chain the iOS app walks: DexScreener, then the LibertySwap token
+// list, then the PLS369 community repo. Ethereum falls back to Trust Wallet.
+function tokenIconSources(chain, address) {
+  const cfg = CHAINS[chain], cs = toChecksumAddress(address);
+  const srcs = [`https://cdn.dexscreener.com/tokens/${cfg.dexSlug}/${String(address).toLowerCase()}.png`];
+  if (chain === 'pulsechain') {
+    srcs.push(`https://cdn.libertyswap.finance/app-tokens/token-logo/${cs}.png`);
+    srcs.push(`https://raw.githubusercontent.com/PLS369/pulsechain-assets/main/blockchain/pulsechain/assets/${cs}/logo.png`);
+  } else if (chain === 'ethereum') {
+    srcs.push(`https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/${cs}/logo.png`);
+  }
+  return srcs;
+}
+
+// <img> that walks the source list on error and ends on a two-letter fallback.
+function tokenIconImg(chain, address, fallbackText) {
+  const srcs = tokenIconSources(chain, address);
+  return `<img src="${srcs[0]}" data-srcs="${srcs.slice(1).join('|')}" onerror="tokenIconError(this, '${fallbackText || ''}')">`;
+}
+function tokenIconError(img, fb) {
+  const rest = (img.dataset.srcs || '').split('|').filter(Boolean);
+  if (rest.length) { img.dataset.srcs = rest.slice(1).join('|'); img.src = rest[0]; return; }
+  const box = img.parentElement;
+  img.remove();
+  if (fb && box) box.insertAdjacentText('afterbegin', fb);
+}
+
 function tokenRowHtml(t, i) {
   const pct = t[currentPeriod] || 0;
   const chCls = t[currentPeriod]==null ? 'flat' : (pct>=0?'up':'down');
   const chTxt = t[currentPeriod]==null ? '—' : formatPct(pct);
   const cfg = CHAINS[t.chain];
-  const iconUrl = `https://dd.dexscreener.com/ds-data/tokens/${cfg.dexSlug}/${t.address}.png`;
   const sym = escapeHtml(t.symbol), fb = sym.replace(/[^a-zA-Z0-9]/g,'').slice(0,2)||'??';
   const badge = CHAIN_ORDER.length>1 ? `<span class="chain-badge" style="background:${cfg.color}"></span>` : '';
   return `
     <div class="token-row" data-addr="${t.key}" style="--accent:${accentFor(t.symbol)}" onclick="toggleTokenInfo('${t.key}')">
       <div class="token-left">
-        <div class="token-icon"><img src="${iconUrl}" onerror="this.parentElement.firstChild.remove?this.parentElement.insertAdjacentText('afterbegin','${fb}'):0;this.remove()">${badge}</div>
+        <div class="token-icon">${tokenIconImg(t.chain, t.address, fb)}${badge}</div>
         <div class="token-meta"><div class="token-symbol">${sym}</div></div>
       </div>
       <div class="token-right">
@@ -630,11 +669,10 @@ function renderStakes() {
   const shown = showAllStakes ? stakes : stakes.slice(0, TOP_N);
   const rows = shown.map(s => {
     const cfg = CHAINS[s.chain], sym = s.chain === 'ethereum' ? 'eHEX' : 'pHEX';
-    const icon = `https://dd.dexscreener.com/ds-data/tokens/${cfg.dexSlug}/${HEX_ADDR}.png`;
     const badge = CHAIN_ORDER.length > 1 ? `<span class="chain-badge" style="background:${cfg.color}"></span>` : '';
     return `<div class="token-row static" style="--accent:${accentFor('HEX Stakes')}">
       <div class="token-left">
-        <div class="token-icon"><img src="${icon}" onerror="this.remove()">${badge}</div>
+        <div class="token-icon">${tokenIconImg(s.chain, HEX_ADDR, '')}${badge}</div>
         <div class="token-meta"><div class="token-symbol">${sym}</div>
           <div class="token-sub">${s.tShares.toFixed(2)} T-Shares · ends ${hexDayToDate(s.endDay).toLocaleDateString('en-US',{year:'numeric',month:'short'})}</div></div>
       </div>
