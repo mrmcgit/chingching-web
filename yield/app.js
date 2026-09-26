@@ -252,7 +252,7 @@
   function claimCell(x) {
     if (x.feeError && !x.claimUsd) return `<div class="err" title="${esc(x.feeError)}">fee read failed</div>`;
     return `<div class="claim-usd">${fmtUsd(x.claimUsd)}</div>
-      <div class="claim-tok">${fmtAmt(x.fee0)} ${esc(x.token0.symbol)} + ${fmtAmt(x.fee1)} ${esc(x.token1.symbol)}</div>`;
+      <div class="claim-tok"><span>${fmtAmt(x.fee0)} ${esc(x.token0.symbol)}</span> + <span>${fmtAmt(x.fee1)} ${esc(x.token1.symbol)}</span></div>`;
   }
 
   function renderList() {
@@ -908,6 +908,12 @@
   const nb = $('siteNavBtn'), nm = $('siteNavMenu');
   nb.addEventListener('click', (e) => { e.stopPropagation(); const open = nm.classList.toggle('hidden') === false; nb.setAttribute('aria-expanded', open); });
   document.addEventListener('click', () => { nm.classList.add('hidden'); nb.setAttribute('aria-expanded', 'false'); });
+  // The iOS app opens the arcade at ?embed=1 in a web view, and its links drop
+  // the param, so remember it for the session. LP Yield stays hidden in there:
+  // App Review objects to in-app links to wallet tools that sign transactions.
+  let embedded = new URLSearchParams(location.search).get('embed') === '1';
+  try { if (embedded) sessionStorage.setItem('ccEmbed', '1'); else embedded = sessionStorage.getItem('ccEmbed') === '1'; } catch (_) { /* storage blocked */ }
+  if (!embedded) nm.querySelectorAll('a[data-app-hide]').forEach((a) => { a.hidden = false; });
 
   setInterval(() => { const u = $('updatedAt'); if (u) u.textContent = 'Updated ' + ago(state.updatedAt); }, 15000);
 

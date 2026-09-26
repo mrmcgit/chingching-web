@@ -648,7 +648,41 @@
       const native = ch === 'pulsechain' ? r.value.plsUsd : r.value.nativeUsd;
       if (native && !out.nativeUsd[ch]) out.nativeUsd[ch] = native;
     });
+    await fillBlankSymbols(out.positions);
     return out;
+  }
+
+  /**
+   * Subgraphs can index a token with an empty symbol: the 9mm PulseChain one
+   * has "" for bridged WETH (0x02dc...3c3c), so its pairs read "/ WPLS". Read
+   * those symbols from the token contracts instead. A failed read leaves the
+   * row as it was.
+   */
+  async function fillBlankSymbols(positions) {
+    const blank = new Map(); // chain -> Set of token addresses
+    for (const p of positions) {
+      const ch = DEXES[p.dex].chain;
+      for (const t of [p.pool.token0, p.pool.token1]) {
+        if (String(t.symbol || '').trim()) continue;
+        if (!blank.has(ch)) blank.set(ch, new Set());
+        blank.get(ch).add(t.id.toLowerCase());
+      }
+    }
+    const found = {};
+    await Promise.all([...blank].map(async ([ch, set]) => {
+      const tokens = [...set];
+      try {
+        const syms = await calls(tokens.map((t) => [t, SEL.symbol]), chainOf(ch).rpcs);
+        tokens.forEach((t, i) => { const s = decodeSymbol(syms[i]); if (s !== '?') found[ch + '|' + t] = s; });
+      } catch (_) { /* keep the blank */ }
+    }));
+    for (const p of positions) {
+      const ch = DEXES[p.dex].chain;
+      for (const t of [p.pool.token0, p.pool.token1]) {
+        const s = !String(t.symbol || '').trim() && found[ch + '|' + t.id.toLowerCase()];
+        if (s) t.symbol = s;
+      }
+    }
   }
 
   /**
