@@ -57,6 +57,10 @@
     if (v >= 10000) return '>9,999%';
     return (v >= 100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(1)) + '%';
   }
+  // Whole dollars from $100 up: the IL cell holds two signed amounts in a narrow column.
+  const fmtSigned = (v) => (v < 0 ? '−' : '+') + (Math.abs(v) >= 100 ? '$' + Math.round(Math.abs(v)).toLocaleString('en-US') : fmtUsd(Math.abs(v)));
+  /** APR compounded daily, for the Est. APR tooltip only. */
+  const dailyApy = (apr) => (Math.pow(1 + apr / 100 / 365, 365) - 1) * 100;
   const feePct = (tier) => (tier / 10000).toString() + '%';
   const shortAddr = (a) => a.slice(0, 6) + '…' + a.slice(-4);
   function ago(ts) {
@@ -138,6 +142,8 @@
       apr: (x) => nz(kind === 'group' ? (x.target ? x.target.estApr : null) : x.estApr),
       poolApr: (x) => nz(kind === 'group' ? (x.target ? x.target.poolApr : null) : x.poolApr),
       value: (x) => x.value,
+      // Unknown IL goes last whichever way you sort: ascending (worst first) is the useful one.
+      net: (x) => (x.netUsd == null ? (f.dir === 'asc' ? Infinity : -Infinity) : x.netUsd),
       pair: (x) => (x.token0.symbol + '/' + x.token1.symbol).toLowerCase(),
       wallet: (x) => walletName(x.owner).toLowerCase(),
     }[f.sort] || ((x) => x.claimUsd);
@@ -255,7 +261,103 @@
       <div class="claim-tok"><span>${fmtAmt(x.fee0)} ${esc(x.token0.symbol)}</span> + <span>${fmtAmt(x.fee1)} ${esc(x.token1.symbol)}</span></div>`;
   }
 
+  function aprTip(p) {
+    let t = "This position's share of the pool's fees yesterday, annualised. Blank when there's no recent pool data or the estimate is implausible (over 1000%).";
+    if (p.estApr > 0) {
+      t += `\n\n≈${fmtPct(dailyApy(p.estApr))} APY if compounded daily with every fee going back in. `
+        + "Fees that don't fit the range's ratio stay in your wallet, so the real figure sits between the two.";
+    }
+    return t;
+  }
+
+  /**
+   * What the position holds: token amounts, and a bar splitting its value
+   * between the two (all one colour when it's out of range).
+   */
+  function compositionHtml(p) {
+    const v0 = p.amt0 * p.token0.usd, v1 = p.amt1 * p.token1.usd, tot = v0 + v1;
+    const pct0 = tot > 0 ? Math.round((v0 / tot) * 100) : null;
+    const split = pct0 == null ? '' : `${pct0}% ${p.token0.symbol} · ${100 - pct0}% ${p.token1.symbol} by value`;
+    return `<div class="comp" title="${esc(split)}"><span>${fmtAmt(p.amt0)} <span class="c0">${esc(p.token0.symbol)}</span></span> + <span>${fmtAmt(p.amt1)} <span class="c1">${esc(p.token1.symbol)}</span></span></div>`
+      + (pct0 == null ? '' : `<div class="comp-bar" title="${esc(split)}"><span style="width:${pct0}%"></span></div>`);
+  }
+
+  const signCls = (v) => (v < 0 ? 'neg' : 'pos');
+  const fmtSignedPct = (v) => (v < 0 ? '−' : '+') + Math.abs(v).toFixed(1) + '%';
+  const fmtDate = (ts) => new Date(ts * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  /** Why a row has no Net, for the "—" tooltip and the popover. */
+  function netUnknownWhy(p) {
+    if (!p.hasHistory) return "Needs the position's history, which only 9mm on PulseChain provides so far.";
+    if (!(p.token0.usd > 0) || !(p.token1.usd > 0)) {
+      return `${!(p.token0.usd > 0) ? p.token0.symbol : p.token1.symbol} has no price, so what holding would be worth can't be worked out.`;
+    }
+    return "The position's history couldn't be read (or its price when this wallet received it), so it can't be compared with holding.";
+  }
+
+  /**
+   * Net against holding, with the impermanent loss written out under it. The
+   * whole cell opens a popover with the working (openNetPop).
+   */
+  function netCell(p) {
+    const h = p.hist;
+    if (!h) return `<span class="dim" title="${esc(netUnknownWhy(p))}">—</span>`;
+    return `<button type="button" class="net-cell" data-act="net" data-uid="${esc(p.uid)}" aria-haspopup="dialog" title="How this is worked out">`
+      + `<span class="il ${h.netUsd == null ? '' : signCls(h.netUsd)}">${h.netUsd == null ? '—' : fmtSigned(h.netUsd)}</span>`
+      + `<span class="claim-tok il-net">IL <span class="${signCls(h.ilTotalUsd)}">${fmtSigned(h.ilTotalUsd)}</span>`
+      + `${h.ilPct == null ? '' : ` <span class="il-pct">${fmtSignedPct(h.ilPct)}</span>`}</span>`
+      + '</button>';
+  }
+
+  function closeNetPop() {
+    const el = $('netPop');
+    if (el) el.remove();
+    state.netPopUid = null;
+  }
+
+  function openNetPop(anchor, p) {
+    closeNetPop();
+    const h = p.hist, s0 = p.token0.symbol, s1 = p.token1.symbol;
+    const toks = (a, b) => `${fmtAmt(a)} ${esc(s0)} + ${fmtAmt(b)} ${esc(s1)}`;
+    // One line of the sum: operator, label with a note under it, amount.
+    const row = (op, k, v, sub, cls = '') => `<div class="kv pop-row${cls}"><span class="op">${op}</span>`
+      + `<span class="k">${k}${sub ? `<span class="pop-sub">${sub}</span>` : ''}</span><span class="v">${v}</span></div>`;
+    const signed = (v) => `<span class="${signCls(v)}">${fmtSigned(v)}</span>`;
+    const g = pairGroupOf(p), n = g ? g.positions.length : 1;
+    const pct = h.ilPct == null ? '' : ` <span class="il-pct">${fmtSignedPct(h.ilPct)}</span>`;
+    const pop = document.createElement('div');
+    pop.className = 'pop';
+    pop.id = 'netPop';
+    pop.setAttribute('role', 'dialog');
+    pop.setAttribute('aria-label', 'Net against holding');
+    pop.innerHTML = `
+      <div class="pop-h">${esc(s0)} / ${esc(s1)} <span class="pop-dim">#${esc(p.id)} · ${esc(p.dexLabel)} · ${esc(walletName(p.owner))}</span></div>
+      <div class="pop-note">How this position has done against simply keeping the tokens that went into it, since ${fmtDate(h.since)} (${h.received ? 'when this wallet received it' : 'when it was opened'}).</div>
+      ${row('', 'Value in the pool now', fmtUsd(p.value), toks(p.amt0, p.amt1))}
+      ${row('−', 'Value if you had held instead', fmtUsd(h.heldUsd), toks(h.held0, h.held1) + ': what went in, kept in the wallet')}
+      ${h.withdrawals
+        ? row('+', `IL already taken out`, signed(h.realisedUsd), `on ${h.withdrawals} withdrawal${h.withdrawals > 1 ? 's' : ''} (${toks(h.out0, h.out1)} came out)`)
+        : ''}
+      ${row('=', 'IL (impermanent loss)', signed(h.ilTotalUsd) + pct, h.ilPct == null ? '' : '% of everything that went in', ' pop-strong')}
+      ${h.earnedUsd == null
+        ? row('+', 'Fees earned', '—', "this position's unclaimed fees couldn't be read")
+        : row('+', 'Fees earned', signed(h.earnedUsd), toks(h.earned0, h.earned1) + ', collected and unclaimed')}
+      ${row('=', 'Net against holding', h.netUsd == null ? '—' : signed(h.netUsd), 'what providing liquidity has made you, over just holding', ' pop-total')}
+      ${n > 1 && g.netUsd != null ? row('', `${n === 2 ? 'Both' : `All ${n}`} ${esc(s0)}/${esc(s1)} positions here`, signed(g.netUsd), `net against holding, ${esc(walletName(p.owner))} on ${esc(p.dexLabel)}`) : ''}
+      <div class="pop-note"><b>IL</b> is what the pool's rebalancing has cost as the price moved: it sells the token that's rising for the one that's falling. It's "impermanent" because it shrinks if the price comes back, and becomes real when you withdraw.</div>
+      <div class="pop-note">"If you had held" counts ${h.received ? 'what the position held when it arrived' : 'the tokens it was opened with'}, plus every add (compounded fees included), less the share taken out with each withdrawal. Both values use the pool's current price; fees use market prices.</div>`;
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect(), w = pop.offsetWidth, ht = pop.offsetHeight;
+    const left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8));
+    let top = r.bottom + 6;
+    if (top + ht > innerHeight - 8 && r.top - ht - 6 > 8) top = r.top - ht - 6;
+    pop.style.left = left + scrollX + 'px';
+    pop.style.top = top + scrollY + 'px';
+    state.netPopUid = p.uid;
+  }
+
   function renderList() {
+    closeNetPop(); // its row is about to be replaced
     const el = $('list');
     if (!state.wallets.length) {
       el.innerHTML = `<div class="empty">Add the wallets you provide V3 liquidity from, on PulseChain or Ethereum.<br>They'll be remembered in this browser, and fees reload each time you open the page.</div>`;
@@ -275,7 +377,7 @@
     const targets = new Set(state.prefs.byPair ? state.groups.filter((g) => g.target && g.positions.length > 1).map((g) => g.target.uid) : []);
     el.innerHTML = `<div class="tbl pos">
       <div class="thead"><div class="tr">
-        ${th('Pair', 'pair')}${th('Wallet', 'wallet')}${th('Range', '')}${th('Value', 'value', 'num')}${th('Est. APR', 'apr', 'num')}${th('Pool APR', 'poolApr', 'num')}${th('Claimable', 'claimable', 'num')}${th('', '', 'num')}
+        ${th('Pair', 'pair')}${th('Wallet', 'wallet')}${th('Range', '')}${th('Value', 'value', 'num')}${th('Est. APR', 'apr', 'num')}${th('Pool APR', 'poolApr', 'num')}${th('Net', 'net', 'num')}${th('Claimable', 'claimable', 'num')}${th('', '', 'num')}
       </div></div>
       <div class="tbody">${rows.map((p) => {
         const cg = actionGroup(p, 'compound'), chk = canCompound(cg);
@@ -291,13 +393,15 @@
         <div class="td wide">
           <div class="pair">${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}${targets.has(p.uid) ? '<span class="target-tag" title="Highest est. APR of this pair in this wallet: compounding goes here">TARGET</span>' : ''}</div>
           <div class="meta"><span class="chain-tag ${esc(p.chain)}">${esc(Y.chainOf(p.chain).native)}</span>${esc(p.dexLabel)} · ${feePct(p.feeTier)} · #${esc(p.id)}</div>
+          ${compositionHtml(p)}
         </div>
         <div class="td span2" data-l="Wallet">${esc(walletName(p.owner))}</div>
         <div class="td end" data-l="Range"><span class="rng ${p.inRange ? 'in' : 'out'}">● ${p.inRange ? 'In range' : 'Out'}</span></div>
         <div class="td num" data-l="Value">${fmtUsd(p.value)}</div>
-        <div class="td num" data-l="Est. APR" title="This position's share of the pool's fees yesterday, annualised. Blank when there's no recent pool data or the estimate is implausible (over 1000%)">${fmtPct(p.estApr)}</div>
+        <div class="td num" data-l="Est. APR" title="${esc(aprTip(p))}">${fmtPct(p.estApr)}</div>
         <div class="td num" data-l="Pool APR" title="Pool fees yesterday / pool TVL, annualised">${fmtPct(p.poolApr)}</div>
-        <div class="td num wide" data-l="Claimable">${claimCell(p)}</div>
+        <div class="td num" data-l="Net">${netCell(p)}</div>
+        <div class="td num span2" data-l="Claimable">${claimCell(p)}</div>
         <div class="td wide"><div class="actions">
           <button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>
           <button class="btn small" type="button" data-act="collect" data-uid="${esc(p.uid)}" ${col.canCollect && !busy ? '' : 'disabled'} title="${esc(col.canCollect ? "Collect this position's fees to your wallet" : col.why)}">Collect</button>
@@ -875,6 +979,10 @@
       if (ok) await refresh(); else renderList();
     } else if (act === 'compoundAll') {
       compoundAll();
+    } else if (act === 'net') {
+      const p = state.positions.find((x) => x.uid === el.dataset.uid);
+      if (!p || state.netPopUid === p.uid) closeNetPop();
+      else openNetPop(el, p);
     }
   });
   document.addEventListener('click', (e) => {
@@ -882,6 +990,7 @@
     // click belonged to the picker, so it must not close it.
     if (state.pickerOpen && e.target.isConnected && !e.target.closest('#connectArea')) { state.pickerOpen = false; renderConnect(); }
     if (state.netMenuOpen && e.target.isConnected && !e.target.closest('.net-switch')) { state.netMenuOpen = false; renderConnect(); }
+    if (state.netPopUid && e.target.isConnected && !e.target.closest('#netPop, [data-act="net"]')) closeNetPop();
   });
 
   $('addBtn').addEventListener('click', () => addWallets($('addInput').value));
@@ -903,6 +1012,8 @@
   $('chainSel').addEventListener('change', (e) => { state.prefs.chain = e.target.value; savePrefs(); render(); });
   $('inRangeChk').addEventListener('change', (e) => { state.prefs.inRange = e.target.checked; savePrefs(); render(); });
   $('minClaim').addEventListener('input', (e) => { state.prefs.minClaim = Math.max(0, parseFloat(e.target.value) || 0); savePrefs(); renderSummary(); renderList(); });
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.netPopUid) closeNetPop(); });
 
   // site menu
   const nb = $('siteNavBtn'), nm = $('siteNavMenu');

@@ -115,7 +115,7 @@
   .tr { display: grid; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 12px; border: 1px solid transparent; }
   .tr + .tr { margin-top: 2px; }
   .tbody .tr:hover { background: rgba(255,255,255,0.025); border-color: var(--line); }
-  .pos .tr { grid-template-columns: minmax(140px, 1.5fr) minmax(80px, 0.9fr) 80px 92px 70px 70px minmax(140px, 1.4fr) 186px; }
+  .pos .tr { grid-template-columns: minmax(140px, 1.7fr) minmax(80px, 0.6fr) 80px 84px 70px 70px 104px minmax(140px, 1.4fr) 186px; }
   .grp-n { font-size: 10px; opacity: 0.8; font-weight: 700; }
   .thead .tr { padding-top: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line); border-radius: 0; }
   .th { font-size: 10px; font-weight: 700; color: var(--dimmer); text-transform: uppercase; letter-spacing: 0.5px; background: none; border: none; text-align: left; cursor: pointer; padding: 0; white-space: nowrap; }
@@ -132,6 +132,37 @@
   .claim-usd { font-weight: 800; color: var(--gold); font-size: 14px; }
   .claim-tok { font-size: 11px; color: var(--dim); margin-top: 2px; }
   .claim-tok span { white-space: nowrap; }
+  .il { font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .il-net { white-space: nowrap; }
+  .net-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; background: none; border: none; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: right; }
+  .net-cell .claim-tok { margin-top: 0; }
+  .comp { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .comp > span { white-space: nowrap; }
+  .comp-bar { height: 3px; margin-top: 4px; max-width: 160px; border-radius: 2px; background: rgba(255,209,102,0.55); overflow: hidden; }
+  .comp-bar span { display: block; height: 100%; background: var(--accent); }
+  .comp .c0 { color: #b3a8ff; font-weight: 600; }
+  .comp .c1 { color: rgba(255,209,102,0.85); font-weight: 600; }
+  .net-cell:hover .il, .net-cell:focus-visible .il { text-decoration: underline dotted; text-underline-offset: 3px; }
+  .pop { position: absolute; z-index: 150; width: 340px; max-width: calc(100vw - 16px); background: #15151f; border: 1px solid var(--line2); border-radius: 14px; padding: 14px 16px; box-shadow: 0 16px 40px rgba(0,0,0,0.55); font-size: 12px; }
+  .pop .kv { font-size: 12px; padding: 6px 0; align-items: baseline; }
+  .pop-row { display: grid !important; grid-template-columns: 12px 1fr auto; gap: 6px; }
+  .pop-row .op { color: var(--dimmer); font-weight: 800; text-align: center; }
+  .pop .kv .k { display: flex; flex-direction: column; }
+  .pop .kv .v { white-space: nowrap; }
+  .pop-h { font-weight: 800; font-size: 14px; margin-bottom: 4px; }
+  .pop-dim { font-weight: 600; font-size: 11px; color: var(--dim); margin-left: 4px; }
+  .pop-sub { font-size: 10.5px; color: var(--dimmer); font-weight: 500; margin-top: 1px; }
+  .pop-note { font-size: 11px; color: var(--dim); line-height: 1.45; margin: 4px 0 6px; }
+  .pop-note b { color: var(--text); }
+  .pop-strong .k, .pop-strong .v { font-weight: 700; }
+  .pop-total { border-bottom: none; }
+  .pop-total .k, .pop-total .v { font-weight: 800; font-size: 13px; }
+  .pop .neg { color: #ff7a70; }
+  .pop .pos { color: var(--up); }
+  .il-pct { font-size: 10px; font-weight: 600; opacity: 0.8; }
+  .il.neg, .claim-tok .neg { color: #ff7a70; }
+  .il.pos, .claim-tok .pos { color: var(--up); }
+  .dim { color: var(--dimmer); }
   .err { color: var(--down); font-size: 11px; }
   .chain-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.3px; border-radius: 4px; padding: 0 4px; margin-right: 5px; vertical-align: 1px; border: 1px solid; }
   .chain-tag.pulsechain { color: #ff5fb0; border-color: rgba(255,46,154,0.5); }
@@ -180,8 +211,8 @@
     .claim-total { font-size: 36px; }
     .ctl input[type=text] { width: 120px; }
   }
-  /* The position table needs ~1010px; below that it becomes cards rather than scrolling sideways. */
-  @media (max-width: 1020px) {
+  /* The position table needs ~1130px; below that it becomes cards rather than scrolling sideways. */
+  @media (max-width: 1140px) {
     .thead { display: none; }
     .pos .tr { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; column-gap: 12px; border-color: var(--line); background: rgba(255,255,255,0.02); padding: 12px; }
     .tr + .tr { margin-top: 8px; }
@@ -191,6 +222,7 @@
     .td.span2 { grid-column: span 2; }
     .td.end { justify-self: end; text-align: right; }
     .actions { justify-content: flex-start; flex-wrap: wrap; }
+    .net-cell { align-items: flex-start; text-align: left; }
   }
   @media (max-width: 420px) {
     .stats { grid-template-columns: 1fr 1fr; }
@@ -289,7 +321,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=19"></script>
-<script src="app.js?v=19"></script>
+<script src="yield-core.js?v=27"></script>
+<script src="app.js?v=27"></script>
 </body>
 </html>
