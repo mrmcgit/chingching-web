@@ -37,6 +37,7 @@
   .site-nav-menu a:hover { background:rgba(255,255,255,0.08); }
   .site-nav-menu a.here { color:#FFD166; }
   .site-nav-menu.hidden { display:none; }
+  .site-nav-menu a[hidden] { display:none; }
 
   /* ---------- top bar ---------- */
   .top { display: flex; align-items: center; gap: 12px; margin: 0 0 18px 44px; min-height: 36px; flex-wrap: wrap; }
@@ -115,7 +116,7 @@
   .tr { display: grid; align-items: center; gap: 10px; padding: 10px 10px; border-radius: 12px; border: 1px solid transparent; }
   .tr + .tr { margin-top: 2px; }
   .tbody .tr:hover { background: rgba(255,255,255,0.025); border-color: var(--line); }
-  .pos .tr { grid-template-columns: minmax(140px, 1.5fr) minmax(80px, 0.9fr) 80px 92px 70px 70px minmax(140px, 1.4fr) 168px; }
+  .pos .tr { grid-template-columns: minmax(140px, 1.5fr) minmax(80px, 0.9fr) 80px 92px 70px 70px minmax(140px, 1.4fr) 186px; }
   .grp-n { font-size: 10px; opacity: 0.8; font-weight: 700; }
   .thead .tr { padding-top: 4px; padding-bottom: 6px; border-bottom: 1px solid var(--line); border-radius: 0; }
   .th { font-size: 10px; font-weight: 700; color: var(--dimmer); text-transform: uppercase; letter-spacing: 0.5px; background: none; border: none; text-align: left; cursor: pointer; padding: 0; white-space: nowrap; }
@@ -131,6 +132,7 @@
   .rng.out { color: var(--warn); background: rgba(255,176,32,0.1); }
   .claim-usd { font-weight: 800; color: var(--gold); font-size: 14px; }
   .claim-tok { font-size: 11px; color: var(--dim); margin-top: 2px; }
+  .claim-tok span { white-space: nowrap; }
   .err { color: var(--down); font-size: 11px; }
   .chain-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.3px; border-radius: 4px; padding: 0 4px; margin-right: 5px; vertical-align: 1px; border: 1px solid; }
   .chain-tag.pulsechain { color: #ff5fb0; border-color: rgba(255,46,154,0.5); }
@@ -143,7 +145,8 @@
   .net-menu { top: 40px; min-width: 180px; }
   .picker-menu .check { margin-left: auto; color: var(--up); font-weight: 800; }
   .target-tag { font-size: 9px; font-weight: 800; color: #d4ccff; border: 1px solid rgba(138,122,237,0.6); border-radius: 5px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
-  .actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+  .actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .actions .btn.primary { min-width: 108px; } /* room for "×N", so every row's buttons line up */
   .status { grid-column: 1 / -1; font-size: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,0.04); color: var(--dim); }
   .status.ok { color: var(--up); background: rgba(52,199,89,0.08); }
   .status.bad { color: #ff7a70; background: rgba(255,59,48,0.08); }
@@ -176,6 +179,10 @@
     .refresh { flex-direction: row; justify-content: space-between; align-items: center; }
     .stats { grid-template-columns: repeat(3, 1fr); }
     .claim-total { font-size: 36px; }
+    .ctl input[type=text] { width: 120px; }
+  }
+  /* The position table needs ~1010px; below that it becomes cards rather than scrolling sideways. */
+  @media (max-width: 1020px) {
     .thead { display: none; }
     .pos .tr { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; column-gap: 12px; border-color: var(--line); background: rgba(255,255,255,0.02); padding: 12px; }
     .tr + .tr { margin-top: 8px; }
@@ -184,8 +191,7 @@
     .td.wide { grid-column: 1 / -1; }
     .td.span2 { grid-column: span 2; }
     .td.end { justify-self: end; text-align: right; }
-    .actions { justify-content: flex-start; }
-    .ctl input[type=text] { width: 120px; }
+    .actions { justify-content: flex-start; flex-wrap: wrap; }
   }
   @media (max-width: 420px) {
     .stats { grid-template-columns: 1fr 1fr; }
@@ -200,7 +206,7 @@
     <a href="/arcade/">Arcade</a>
     <a href="/oceanomics/">Oceanomics</a>
     <a href="/">Portfolio</a>
-    <!-- Not linked from any menu yet, this one included (reachable by URL only). -->
+    <a href="/yield/" class="here" data-app-hide hidden>LP Yield</a>
   </nav>
 </div>
 
@@ -284,7 +290,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="yield-core.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

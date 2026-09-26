@@ -191,6 +191,7 @@
   .site-nav-menu a:hover { background:rgba(255,255,255,0.08); }
   .site-nav-menu a.here { color:#FFD166; }
   .site-nav-menu.hidden { display:none; }
+  .site-nav-menu a[hidden] { display:none; }
 </style>
 </head>
 <body>
@@ -200,6 +201,7 @@
     <a href="/arcade/">Arcade</a>
     <a href="/oceanomics/">Oceanomics</a>
     <a href="/" class="here">Portfolio</a>
+    <a href="/yield/" data-app-hide hidden>LP Yield</a>
   </nav>
 </div>
 
@@ -1201,6 +1203,12 @@ document.addEventListener('click', e => {
   const b = document.getElementById('siteNavBtn'), m = document.getElementById('siteNavMenu');
   b.addEventListener('click', e => { e.stopPropagation(); const open = m.classList.toggle('hidden') === false; b.setAttribute('aria-expanded', open); });
   document.addEventListener('click', () => { m.classList.add('hidden'); b.setAttribute('aria-expanded', 'false'); });
+  // The iOS app opens the arcade at ?embed=1 in a web view, and its links drop
+  // the param, so remember it for the session. LP Yield stays hidden in there:
+  // App Review objects to in-app links to wallet tools that sign transactions.
+  let embedded = new URLSearchParams(location.search).get('embed') === '1';
+  try { if (embedded) sessionStorage.setItem('ccEmbed', '1'); else embedded = sessionStorage.getItem('ccEmbed') === '1'; } catch (_) { /* storage blocked */ }
+  if (!embedded) m.querySelectorAll('a[data-app-hide]').forEach(a => { a.hidden = false; });
 })();
 </script>
 </body>
