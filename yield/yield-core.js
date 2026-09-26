@@ -308,6 +308,11 @@
       token1 { id symbol decimals derivedUSD }
     }`;
 
+  // One row per block in which a position changed (add, remove, collect) or
+  // changed hands, with the running totals in whole tokens at that point.
+  const TOTAL_FIELDS = 'depositedToken0 depositedToken1 withdrawnToken0 withdrawnToken1 collectedFeesToken0 collectedFeesToken1';
+  const SNAPSHOT_FIELDS = 'owner blockNumber timestamp liquidity ' + TOTAL_FIELDS;
+
   /**
    * The two newest poolDayData rows per pool from the last week, newest first,
    * which is what the app's nested `poolDayData(first: 2)` returns.
@@ -343,7 +348,7 @@
       const q = `{
         bundles(first: 1) { ethPriceUSD }
         positions(first: 1000, orderBy: id, orderDirection: asc,
-          where: { owner_in: [${ownersArg}], liquidity_gt: "0"${idFilter} }) { ${POSITION_FIELDS} }
+          where: { owner_in: [${ownersArg}], liquidity_gt: "0"${idFilter} }) { ${POSITION_FIELDS} ${TOTAL_FIELDS} }
       }`;
       const d = await gql(q);
       if (d.bundles && d.bundles[0]) plsUsd = Number(d.bundles[0].ethPriceUSD) || plsUsd;
@@ -351,9 +356,104 @@
       if (d.positions.length < 1000) break;
       last = d.positions[d.positions.length - 1].id;
     }
-    const days = all.length ? await fetchPoolDays(all.map((p) => p.pool.id)) : {};
+    const [days] = await Promise.all([
+      all.length ? fetchPoolDays(all.map((p) => p.pool.id)) : {},
+      attachHistory(all, owners).catch(() => { /* no history: IL shows as unknown */ }),
+    ]);
     for (const p of all) p.pool.poolDayData = days[p.pool.id.toLowerCase()] || [];
     return { positions: all, plsUsd };
+  }
+
+  /**
+   * Every snapshot of each position, oldest first. The subgraph filters
+   * snapshots by one position only, so 50 positions go in one request as
+   * aliases (128 positions, 1,633 snapshots: 2 s). A position with 1,000+
+   * snapshots is paged on by block.
+   */
+  async function fetchSnapshots(ids) {
+    const out = {};
+    const one = (id, after) => `p${id}: positionSnapshots(first: 1000, orderBy: blockNumber, orderDirection: asc, `
+      + `where: { position: "${id}"${after ? `, blockNumber_gt: "${after}"` : ''} }) { ${SNAPSHOT_FIELDS} }`;
+    const chunks = [];
+    for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+    let next = 0;
+    async function worker() {
+      while (next < chunks.length) {
+        const chunk = chunks[next++];
+        const d = await gql(`{ ${chunk.map((id) => one(id)).join(' ')} }`);
+        for (const id of chunk) out[id] = d['p' + id] || [];
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, worker));
+    for (const id of ids) {
+      while (out[id].length && out[id].length % 1000 === 0) {
+        const more = (await gql(`{ ${one(id, out[id][out[id].length - 1].blockNumber)} }`))['p' + id] || [];
+        if (!more.length) break;
+        out[id].push(...more);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The stretch of a position's history that belongs to the tracked wallets:
+   * from its mint, or from when one of them received it. A move between two
+   * tracked wallets doesn't restart it. #154598 is why: minted and 99% withdrawn
+   * by another wallet, then sent on, its lifetime totals were someone else's.
+   */
+  function tenureOf(snaps, owners) {
+    if (!snaps || !snaps.length) return null;
+    let start = snaps.length;
+    while (start > 0 && owners.has(String(snaps[start - 1].owner).toLowerCase())) start--;
+    if (start === snaps.length) return null; // the newest snapshot isn't ours yet (indexing lag)
+    return { start, received: start > 0, since: Number(snaps[start].timestamp), block: Number(snaps[start].blockNumber) };
+  }
+
+  /**
+   * The snapshot list can trail the position: #164664's newest add never got a
+   * snapshot (last one 5.861e21 liquidity, position 5.875e21), so its tokens
+   * were missing from "held instead" while its liquidity counted in the value,
+   * and IL read +$98. When the newest snapshot disagrees with the position's
+   * own totals, those totals become one more step.
+   */
+  function reconcile(p, snaps) {
+    if (!snaps || !snaps.length) return snaps || null;
+    const last = snaps[snaps.length - 1];
+    const keys = ['liquidity'].concat(TOTAL_FIELDS.split(' '));
+    if (keys.every((k) => p[k] == null || num(p[k]) === num(last[k]))) return snaps;
+    const fix = { ...last, owner: p.owner };
+    for (const k of keys) if (p[k] != null) fix[k] = p[k];
+    return snaps.concat([fix]);
+  }
+
+  /**
+   * Snapshots and tenure on each 9mm row, plus, for a received position, what
+   * it held at that moment: its liquidity then, at the pool price read from an
+   * archive node at that block (the subgraph ignores block-pinned queries).
+   */
+  async function attachHistory(positions, owners) {
+    if (!positions.length) return;
+    const tracked = new Set(owners.map((o) => o.toLowerCase()));
+    const snaps = await fetchSnapshots(positions.map((p) => String(p.id)));
+    const received = [];
+    for (const p of positions) {
+      p.snapshots = reconcile(p, snaps[String(p.id)]);
+      p.tenure = tenureOf(p.snapshots, tracked);
+      if (p.tenure && p.tenure.received) received.push(p);
+    }
+    if (!received.length) return;
+    const chain = CHAINS.pulsechain;
+    const res = await rpcBatchChunked(received.map((p) => ({
+      method: 'eth_call', params: [{ to: p.pool.id, data: SEL.slot0 }, '0x' + p.tenure.block.toString(16)],
+    })), 25, 3, chain.archiveRpcs);
+    received.forEach((p, i) => {
+      const r = res[i];
+      if (!r || r.error || !r.result || r.result === '0x') return;
+      const w = wordsOf(r.result);
+      const { a0, a1 } = positionAmounts(p.snapshots[p.tenure.start].liquidity, w[0].toString(),
+        Number(BigInt.asIntN(24, w[1])), num(p.tickLower), num(p.tickUpper));
+      p.tenure.startAmounts = { a0: a0 / 10 ** num(p.pool.token0.decimals), a1: a1 / 10 ** num(p.pool.token1.decimals) };
+    });
   }
 
   /** Active liquidity per pool, read on-chain: keyed by lowercased pool id. */
@@ -805,6 +905,8 @@
     const ok = fee && !fee.error;
     const fee0Raw = ok ? fee.fee0 : null, fee1Raw = ok ? fee.fee1 : null;
     const fee0 = ok ? toUnits(fee0Raw, d0) : 0, fee1 = ok ? toUnits(fee1Raw, d1) : 0;
+    const hist = positionHistory(p, { value, amt0, amt1, p0, p1, poolPrice: poolPriceOf(pool, d0, d1),
+      unclaimed0: ok ? fee0 : null, unclaimed1: ok ? fee1 : null });
 
     return {
       id: String(p.id), dex: p.dex, dexLabel: DEXES[p.dex].label, nfpm: DEXES[p.dex].nfpm,
@@ -816,6 +918,85 @@
       amt0, amt1, value, inRange, poolApr, estApr,
       fee0Raw, fee1Raw, fee0, fee1, claimUsd: fee0 * p0 + fee1 * p1,
       feeError: ok ? null : (fee && fee.error) || 'fee read failed',
+      hasHistory: p.snapshots != null,
+      hist, // see positionHistory; null when unknown
+      netUsd: hist ? hist.netUsd : null,
+    };
+  }
+
+  /** Price of token0 in token1 from the pool's sqrtPriceX96. */
+  const poolPriceOf = (pool, d0, d1) => Math.pow(num(pool.sqrtPrice) / Q96, 2) * Math.pow(10, d0 - d1);
+
+  /**
+   * Net against holding, over the tracked wallets' stretch of the position.
+   *
+   * "Held instead" starts as the tokens put in at mint, or what the position
+   * held when it was received. Every later add joins it, compounded fees
+   * included (they were yours before they went back in). Each withdrawal takes
+   * the same share of it as the share of liquidity removed, the way a cost
+   * basis is averaged, so a big partial withdrawal can't leave the rest measured
+   * against the whole history. All valued at today's prices.
+   *
+   * - Unrealised IL: value now minus "held instead" still in the position.
+   * - Realised IL: on each withdrawal, what came out minus its share of "held
+   *   instead" (tokens kept, valued today).
+   * - Fees earned: collected + unclaimed - withdrawn over the stretch, per token.
+   *   The subgraph's collectedFeesToken* counts withdrawn principal (#9802:
+   *   collected equals withdrawn, no fees), so principal must come off.
+   * Per position these add up: compounding counts fees as earned where they
+   * came from and as put in where they went.
+   */
+  function positionHistory(p, { value, amt0, amt1, p0, p1, poolPrice, unclaimed0, unclaimed1 }) {
+    const snaps = p.snapshots, t = p.tenure;
+    if (!snaps || !t || !(p0 > 0) || !(p1 > 0)) return null;
+    // Tokens are compared at the pool's own price, scaled so the position is
+    // worth what the Value column says. Market prices can sit well off a thin
+    // pool's (INC/PLSX #165843: 16%), and valuing both sides at those makes IL
+    // read as a gain, which a V3 position can't have. Fees use market prices.
+    const v1 = amt0 * poolPrice + amt1;
+    const k = poolPrice > 0 && v1 > 0 ? value / v1 : 0;
+    const q0 = k > 0 ? k * poolPrice : p0, q1 = k > 0 ? k : p1;
+    if (t.received && !t.startAmounts) return null; // no price at receipt
+    const n = (row, k) => num(row[k]);
+    const ZERO = { liquidity: '0', depositedToken0: 0, depositedToken1: 0, withdrawnToken0: 0, withdrawnToken1: 0,
+      collectedFeesToken0: 0, collectedFeesToken1: 0 };
+    const base = t.received ? snaps[t.start] : ZERO;
+    let b0 = t.received ? t.startAmounts.a0 : 0, b1 = t.received ? t.startAmounts.a1 : 0;
+    let in0 = b0, in1 = b1, r0 = 0, r1 = 0, out0 = 0, out1 = 0, withdrawals = 0;
+    let prev = base;
+    for (let k = t.received ? t.start + 1 : 0; k < snaps.length; k++) {
+      const s = snaps[k];
+      const dDep0 = n(s, 'depositedToken0') - n(prev, 'depositedToken0'), dDep1 = n(s, 'depositedToken1') - n(prev, 'depositedToken1');
+      const dWd0 = n(s, 'withdrawnToken0') - n(prev, 'withdrawnToken0'), dWd1 = n(s, 'withdrawnToken1') - n(prev, 'withdrawnToken1');
+      const Lp = num(prev.liquidity), Ln = num(s.liquidity);
+      if ((dWd0 > 0 || dWd1 > 0) && Lp > 0) {
+        // Share of liquidity removed. An add in the same block hides part of the
+        // drop, so there it reads low; a remove and an add in one block is rare.
+        const f = Math.min(1, Math.max(0, (Lp - Ln) / Lp));
+        r0 += dWd0 - f * b0; r1 += dWd1 - f * b1;
+        b0 *= 1 - f; b1 *= 1 - f;
+        out0 += dWd0; out1 += dWd1; withdrawals++;
+      }
+      if (dDep0 > 0 || dDep1 > 0) { b0 += Math.max(0, dDep0); b1 += Math.max(0, dDep1); in0 += Math.max(0, dDep0); in1 += Math.max(0, dDep1); }
+      prev = s;
+    }
+    const last = prev;
+    const heldUsd = b0 * q0 + b1 * q1;
+    const ilUsd = value - heldUsd;
+    const realisedUsd = r0 * q0 + r1 * q1;
+    let earnedUsd = null, earned0 = null, earned1 = null;
+    if (unclaimed0 != null) {
+      earned0 = Math.max(0, n(last, 'collectedFeesToken0') - n(base, 'collectedFeesToken0') + unclaimed0 - (n(last, 'withdrawnToken0') - n(base, 'withdrawnToken0')));
+      earned1 = Math.max(0, n(last, 'collectedFeesToken1') - n(base, 'collectedFeesToken1') + unclaimed1 - (n(last, 'withdrawnToken1') - n(base, 'withdrawnToken1')));
+      earnedUsd = earned0 * p0 + earned1 * p1;
+    }
+    const ilTotalUsd = ilUsd + realisedUsd;
+    const inUsd = in0 * q0 + in1 * q1;
+    return {
+      received: t.received, since: t.since,
+      held0: b0, held1: b1, heldUsd, in0, in1, inUsd, out0, out1, withdrawals,
+      ilUsd, realisedUsd, ilTotalUsd, ilPct: inUsd > 0 ? (ilTotalUsd / inUsd) * 100 : null,
+      earned0, earned1, earnedUsd, netUsd: earnedUsd == null ? null : ilTotalUsd + earnedUsd,
     };
   }
 
@@ -850,6 +1031,8 @@
       g.fee0 = g.positions.reduce((s, p) => s + p.fee0, 0);
       g.fee1 = g.positions.reduce((s, p) => s + p.fee1, 0);
       g.hasFeeError = g.positions.some((p) => p.feeError);
+      // Pair total for the Net popover; unknown if any position is.
+      g.netUsd = g.positions.every((p) => p.netUsd != null) ? g.positions.reduce((s, p) => s + p.netUsd, 0) : null;
       groups.push(g);
     }
     return groups;
@@ -900,7 +1083,7 @@
     rpcBatch, rpcBatchChunked, rpcCall, ethCall, gql,
     fetchPositions, fetch9mm, fetchLbs, fetchSwitch, fetchUniswapV3, dexScreenerPrices, decodeSymbol, fetchFees, readAllowance, readPosition,
     encAggregate3, decAggregate3, multiRead,
-    positionAmounts, poolDay, buildPosition, buildGroups, withSlippage, toUnits,
+    positionAmounts, poolDay, buildPosition, buildGroups, withSlippage, toUnits, tenureOf, positionHistory,
     buildCompoundData, buildCollectData, decodeIncreaseResult,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
