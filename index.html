@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ching Ching - Portfolio</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="description" content="View a PulseChain and Ethereum wallet portfolio">
 <meta property="og:title" content="Ching Ching - Portfolio">
 <meta property="og:description" content="View token holdings, prices, and portfolio value across PulseChain and Ethereum">
@@ -356,7 +359,8 @@ function shortAddr(a) { return a.slice(0,6) + '...' + a.slice(-4); }
 function formatUSD(n) {
   if (n>=1e12) return '$'+(n/1e12).toFixed(2)+'T'; if (n>=1e9) return '$'+(n/1e9).toFixed(2)+'B';
   if (n>=1e6) return '$'+(n/1e6).toFixed(2)+'M'; if (n>=1000) return '$'+Math.round(n).toLocaleString('en-US');
-  if (n>=1) return '$'+n.toFixed(2); if (n>=0.01) return '$'+n.toFixed(3); return '$'+n.toFixed(6);
+  // Dollar amounts never show more than 2 decimals (unit prices use formatPrice).
+  if (n<0) return '-'+formatUSD(-n); if (n>=0.01) return '$'+n.toFixed(2); if (n>0) return '<$0.01'; return '$0.00';
 }
 function formatPrice(n) {
   if (n>=1) return '$'+n.toLocaleString('en-US',{maximumFractionDigits:4}); if (n>=0.0001) return '$'+n.toFixed(6);
