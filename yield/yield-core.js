@@ -24,10 +24,6 @@
       rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
       archiveRpcs: ['https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
       explorerTx: 'https://otter.pulsechain.com/tx/',
-      // Native PLS always left in the wallet after gas, so it can pay for
-      // whatever it does next. The page never spends native PLS otherwise:
-      // every tx has value 0 and fees arrive (and go back in) as WPLS.
-      nativeReserve: 1000,
       // Read from each PulseChain position manager's WETH9(), 2026-09-25.
       wrapped: '0xa1077a294dde1b09bb078844df40758a5d0f9a27',
       addChain: { chainName: 'PulseChain', nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
@@ -81,7 +77,11 @@
     lbs: { label: 'LibertySwap', chain: 'pulsechain', nfpm: '0x19b1347900840e7a299f339868881750918fad91' },
     // Algebra names its unwrap differently; unwrapWETH9 reverts on it (simulated).
     switch: { label: 'Switch', chain: 'pulsechain', nfpm: '0xbfd64d5f12ec1389460d02861cbbb939b99230c6',
-      unwrap: 'unwrapWNativeToken' },
+      unwrap: 'unwrapWNativeToken',
+      // Its subgraph's collectedFeesToken* is fees only (= collectedToken* -
+      // withdrawnToken* on all 11 open positions with withdrawals, 2026-09-29);
+      // 9mm's counts withdrawn principal too.
+      feesOnly: true, poolState: 'globalState' },
     univ3: { label: 'Uniswap V3', chain: 'ethereum', nfpm: '0xc36442b4a4522e871399cd717abdd847ab11fe88',
       factory: '0x1f98431c8ad98523631ae4a59f267346ea31f984' },
     // 9mm's Ethereum deployment (a PancakeSwap V3 fork, same interfaces as
@@ -108,6 +108,7 @@
     tokenOfOwnerByIndex: '0x2f745c59', // tokenOfOwnerByIndex(address,uint256)
     getPool: '0x1698ee82',   // getPool(address,address,uint24)
     slot0: '0x3850c7bd',     // slot0()
+    globalState: '0xe76c01e4', // globalState(): Algebra's slot0, same first two words (price, tick)
     feeGrowth0: '0xf3058399', // feeGrowthGlobal0X128()
     feeGrowth1: '0x46141319', // feeGrowthGlobal1X128()
     symbol: '0x95d89b41',    // symbol()
@@ -116,6 +117,7 @@
     unwrapWETH9: '0x49404b7c',        // unwrapWETH9(uint256,address): Uniswap/Pancake managers
     unwrapWNativeToken: '0x69bc35b2', // unwrapWNativeToken(uint256,address): Algebra (Switch)
     sweepToken: '0xdf2ab5bb',         // sweepToken(address,uint256,address)
+    deposit: '0xd0e30db0',            // deposit(): wrap native into WPLS/WETH
   };
 
   const MAX128 = (1n << 128n) - 1n;
@@ -370,7 +372,7 @@
    * aliases (128 positions, 1,633 snapshots: 2 s). A position with 1,000+
    * snapshots is paged on by block.
    */
-  async function fetchSnapshots(ids) {
+  async function fetchSnapshots(ids, url = CFG.subgraph) {
     const out = {};
     const one = (id, after) => `p${id}: positionSnapshots(first: 1000, orderBy: blockNumber, orderDirection: asc, `
       + `where: { position: "${id}"${after ? `, blockNumber_gt: "${after}"` : ''} }) { ${SNAPSHOT_FIELDS} }`;
@@ -380,14 +382,14 @@
     async function worker() {
       while (next < chunks.length) {
         const chunk = chunks[next++];
-        const d = await gql(`{ ${chunk.map((id) => one(id)).join(' ')} }`);
+        const d = await gql(`{ ${chunk.map((id) => one(id)).join(' ')} }`, url);
         for (const id of chunk) out[id] = d['p' + id] || [];
       }
     }
     await Promise.all(Array.from({ length: Math.min(3, chunks.length) }, worker));
     for (const id of ids) {
       while (out[id].length && out[id].length % 1000 === 0) {
-        const more = (await gql(`{ ${one(id, out[id][out[id].length - 1].blockNumber)} }`))['p' + id] || [];
+        const more = (await gql(`{ ${one(id, out[id][out[id].length - 1].blockNumber)} }`, url))['p' + id] || [];
         if (!more.length) break;
         out[id].push(...more);
       }
@@ -431,10 +433,10 @@
    * it held at that moment: its liquidity then, at the pool price read from an
    * archive node at that block (the subgraph ignores block-pinned queries).
    */
-  async function attachHistory(positions, owners) {
+  async function attachHistory(positions, owners, dex = '9mm', url = CFG.subgraph) {
     if (!positions.length) return;
     const tracked = new Set(owners.map((o) => o.toLowerCase()));
-    const snaps = await fetchSnapshots(positions.map((p) => String(p.id)));
+    const snaps = await fetchSnapshots(positions.map((p) => String(p.id)), url);
     const received = [];
     for (const p of positions) {
       p.snapshots = reconcile(p, snaps[String(p.id)]);
@@ -444,7 +446,7 @@
     if (!received.length) return;
     const chain = CHAINS.pulsechain;
     const res = await rpcBatchChunked(received.map((p) => ({
-      method: 'eth_call', params: [{ to: p.pool.id, data: SEL.slot0 }, '0x' + p.tenure.block.toString(16)],
+      method: 'eth_call', params: [{ to: p.pool.id, data: SEL[DEXES[dex].poolState || 'slot0'] }, '0x' + p.tenure.block.toString(16)],
     })), 25, 3, chain.archiveRpcs);
     received.forEach((p, i) => {
       const r = res[i];
@@ -502,7 +504,7 @@
         bundles(first: 1) { maticPriceUSD }
         positions(first: 1000, orderBy: id, orderDirection: asc,
           where: { owner_in: [${ownersArg}], liquidity_gt: "0"${idFilter} }) {
-          id owner liquidity tickLower { tickIdx } tickUpper { tickIdx }
+          id owner liquidity tickLower { tickIdx } tickUpper { tickIdx } ${TOTAL_FIELDS} collectedToken0 collectedToken1
           pool { id fee tick sqrtPrice liquidity
             token0 { id symbol decimals derivedMatic }
             token1 { id symbol decimals derivedMatic }
@@ -516,15 +518,14 @@
       last = d.positions[d.positions.length - 1].id;
     }
     const usd = (t) => ({ id: t.id, symbol: t.symbol, decimals: t.decimals, derivedUSD: String(num(t.derivedMatic) * plsUsd) });
-    return {
-      plsUsd,
-      positions: all.map((p) => ({
-        ...p,
-        tickLower: p.tickLower && p.tickLower.tickIdx,
-        tickUpper: p.tickUpper && p.tickUpper.tickIdx,
-        pool: { ...p.pool, feeTier: p.pool.fee, token0: usd(p.pool.token0), token1: usd(p.pool.token1) },
-      })),
-    };
+    const positions = all.map((p) => ({
+      ...p,
+      tickLower: p.tickLower && p.tickLower.tickIdx,
+      tickUpper: p.tickUpper && p.tickUpper.tickIdx,
+      pool: { ...p.pool, feeTier: p.pool.fee, token0: usd(p.pool.token0), token1: usd(p.pool.token1) },
+    }));
+    await attachHistory(positions, owners, 'switch', CFG.switchSubgraph).catch(() => { /* Net unknown */ });
+    return { plsUsd, positions };
   }
 
   // ---------- Multicall3 (one eth_call for many reads) ----------
@@ -953,8 +954,11 @@
     // worth what the Value column says. Market prices can sit well off a thin
     // pool's (INC/PLSX #165843: 16%), and valuing both sides at those makes IL
     // read as a gain, which a V3 position can't have. Fees use market prices.
+    // k = USD per token1. With (almost) nothing left in the position there's
+    // no value to scale to (#556 on Switch, fully withdrawn), so average the
+    // two market prices through the pool price instead of using them as they are.
     const v1 = amt0 * poolPrice + amt1;
-    const k = poolPrice > 0 && v1 > 0 ? value / v1 : 0;
+    const k = !(poolPrice > 0) ? 0 : v1 > 0 && value >= 1 ? value / v1 : (p1 + p0 / poolPrice) / 2;
     const q0 = k > 0 ? k * poolPrice : p0, q1 = k > 0 ? k : p1;
     if (t.received && !t.startAmounts) return null; // no price at receipt
     const n = (row, k) => num(row[k]);
@@ -986,8 +990,19 @@
     const realisedUsd = r0 * q0 + r1 * q1;
     let earnedUsd = null, earned0 = null, earned1 = null;
     if (unclaimed0 != null) {
-      earned0 = Math.max(0, n(last, 'collectedFeesToken0') - n(base, 'collectedFeesToken0') + unclaimed0 - (n(last, 'withdrawnToken0') - n(base, 'withdrawnToken0')));
-      earned1 = Math.max(0, n(last, 'collectedFeesToken1') - n(base, 'collectedFeesToken1') + unclaimed1 - (n(last, 'withdrawnToken1') - n(base, 'withdrawnToken1')));
+      // The unclaimed amount (a collect() staticcall) includes principal that
+      // was withdrawn but not collected yet, so that comes off. Where
+      // collectedFeesToken* counts principal (9mm) this is collected +
+      // unclaimed - withdrawn over the stretch; where it's fees only (Switch),
+      // the principal still owed is withdrawn - (collected - fees) today.
+      const earned = (i) => {
+        const dFees = n(last, 'collectedFeesToken' + i) - n(base, 'collectedFeesToken' + i);
+        const owed = DEXES[p.dex] && DEXES[p.dex].feesOnly
+          ? Math.max(0, n(p, 'withdrawnToken' + i) - (n(p, 'collectedToken' + i) - n(p, 'collectedFeesToken' + i)))
+          : n(last, 'withdrawnToken' + i) - n(base, 'withdrawnToken' + i);
+        return Math.max(0, dFees + (i === 0 ? unclaimed0 : unclaimed1) - owed);
+      };
+      earned0 = earned(0); earned1 = earned(1);
       earnedUsd = earned0 * p0 + earned1 * p1;
     }
     const ilTotalUsd = ilUsd + realisedUsd;
@@ -1038,6 +1053,44 @@
     return groups;
   }
 
+  /**
+   * How far a compound can go with the wallet's own tokens on top of the fees.
+   * All amounts are raw BigInts. `native` is what may be wrapped for the
+   * wrapped side (index 0 or 1, else -1), already net of the gas reserve.
+   * Liquidity maths is in floats: this drives the confirm-screen preview; the
+   * simulation of the chosen amounts sets what really goes in.
+   */
+  function topUpPlan({ sqrtPriceX96, tick, tickLower, tickUpper, fee0, fee1, wallet0, wallet1, native = 0n, wrappedIndex = -1 }) {
+    const u = positionAmounts('1000000000000000000', sqrtPriceX96, tick, tickLower, tickUpper);
+    const a0 = u.a0 / 1e18, a1 = u.a1 / 1e18; // raw tokens per unit of liquidity
+    const avail0 = fee0 + wallet0 + (wrappedIndex === 0 ? native : 0n);
+    const avail1 = fee1 + wallet1 + (wrappedIndex === 1 ? native : 0n);
+    const cap = (have, per) => (per > 0 ? Number(have) / per : Infinity);
+    const lFees = Math.min(cap(fee0, a0), cap(fee1, a1));
+    const lMax = Math.min(cap(avail0, a0), cap(avail1, a1));
+    return { a0, a1, fee0, fee1, wallet0, wallet1, native, wrappedIndex, avail0, avail1,
+      lFees: Number.isFinite(lFees) ? lFees : 0, lMax: Number.isFinite(lMax) ? lMax : 0 };
+  }
+
+  /**
+   * The amounts at slider position t (0 = what the fees alone fill, 1 = the
+   * most the wallet allows), and where each comes from: fees first, then the
+   * wallet's tokens, then native wrapped for the wrapped side.
+   */
+  function topUpAt(plan, t) {
+    const L = plan.lFees + Math.min(1, Math.max(0, t)) * (plan.lMax - plan.lFees);
+    const amt = (per, avail) => { const x = BigInt(Math.floor(L * per)); return x < avail ? x : avail; };
+    const n0 = amt(plan.a0, plan.avail0), n1 = amt(plan.a1, plan.avail1);
+    const split = (n, fee, wallet) => {
+      const fromFees = n < fee ? n : fee;
+      const rest = n - fromFees;
+      const fromWallet = rest < wallet ? rest : wallet;
+      return { fromFees, fromWallet, fromNative: rest - fromWallet };
+    };
+    const s0 = split(n0, plan.fee0, plan.wallet0), s1 = split(n1, plan.fee1, plan.wallet1);
+    return { n0, n1, s0, s1, wrap: plan.wrappedIndex === 0 ? s0.fromNative : plan.wrappedIndex === 1 ? s1.fromNative : 0n };
+  }
+
   /** Apply a slippage tolerance in basis points to a raw amount. */
   const withSlippage = (raw, bps) => (raw * BigInt(10000 - bps)) / 10000n;
 
@@ -1084,7 +1137,7 @@
     fetchPositions, fetch9mm, fetchLbs, fetchSwitch, fetchUniswapV3, dexScreenerPrices, decodeSymbol, fetchFees, readAllowance, readPosition,
     encAggregate3, decAggregate3, multiRead,
     positionAmounts, poolDay, buildPosition, buildGroups, withSlippage, toUnits, tenureOf, positionHistory,
-    buildCompoundData, buildCollectData, decodeIncreaseResult,
+    buildCompoundData, buildCollectData, decodeIncreaseResult, topUpPlan, topUpAt,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.YieldCore = api;
