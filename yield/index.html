@@ -67,14 +67,20 @@
   .panel { background: linear-gradient(145deg, #141420 0%, #0d0d18 55%, #12101e 100%); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
   .panel-title { font-size: 11px; font-weight: 700; color: #9a94c0; text-transform: uppercase; letter-spacing: 0.6px; }
 
-  .summary { display: grid; grid-template-columns: 1.3fr 2fr auto; gap: 18px; align-items: center; }
+  .summary { display: grid; grid-template-columns: 1.3fr 2fr auto; grid-template-areas: "claim stats refresh"; gap: 18px; align-items: center; }
+  .summary > :first-child { grid-area: claim; }
+  .summary .stats { grid-area: stats; }
+  .summary .refresh { grid-area: refresh; }
   .claim-label { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }
   .claim-total { font-size: 44px; font-weight: 800; letter-spacing: -1.5px; line-height: 1.1; margin-top: 4px; background: linear-gradient(135deg, #fff 0%, #c9c1ff 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
   .claim-sub { font-size: 12px; color: var(--dim); margin-top: 4px; }
-  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .stat { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .stat .k { font-size: 10px; color: var(--dimmer); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
-  .stat .v { font-size: 17px; font-weight: 700; margin-top: 3px; }
+  .stat .v { font-size: 17px; font-weight: 700; margin-top: 3px; white-space: nowrap; }
+  .stat .v.neg { color: #ff7a70; }
+  .stat .v.pos { color: var(--up); }
+  .stat .s { font-size: 10px; color: var(--dimmer); margin-top: 2px; }
   .refresh { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
   .updated { font-size: 11px; color: var(--dimmer); white-space: nowrap; }
   .spin { width: 14px; height: 14px; }
@@ -200,6 +206,12 @@
   .note.warn { color: var(--warn); }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   .settings-grid { display: grid; gap: 12px; }
+  .topup { margin-top: 12px; padding: 12px; border: 1px solid var(--line2); border-radius: 12px; background: rgba(138,122,237,0.06); }
+  .topup-h { display: flex; justify-content: space-between; font-size: 13px; font-weight: 700; }
+  .topup-h #mPct { color: #c9c1ff; }
+  .topup input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--accent); }
+  .topup-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--dimmer); }
+  .topup .kv { border-bottom: none; padding-bottom: 0; }
   .modal-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .modal-toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
   .settings-grid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
@@ -208,14 +220,14 @@
 
   /* ---------- narrow screens: rows become cards ---------- */
   @media (max-width: 820px) {
-    .summary { grid-template-columns: 1fr; }
     .refresh { flex-direction: row; justify-content: space-between; align-items: center; }
-    .stats { grid-template-columns: repeat(3, 1fr); }
     .claim-total { font-size: 36px; }
     .ctl input[type=text] { width: 120px; }
   }
   /* The position table needs ~1130px; below that it becomes cards rather than scrolling sideways. */
   @media (max-width: 1140px) {
+    /* Four stats don't fit beside the total: give them their own row. */
+    .summary { grid-template-columns: 1fr auto; grid-template-areas: "claim refresh" "stats stats"; }
     .thead { display: none; }
     .pos .tr { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 10px; column-gap: 12px; border-color: var(--line); background: rgba(255,255,255,0.02); padding: 12px; }
     .tr + .tr { margin-top: 8px; }
@@ -227,8 +239,13 @@
     .actions { justify-content: flex-start; flex-wrap: wrap; }
     .net-cell { align-items: flex-start; text-align: left; }
   }
-  @media (max-width: 420px) {
+  @media (max-width: 820px) {
+    .summary { grid-template-columns: 1fr; grid-template-areas: "claim" "stats" "refresh"; }
+  }
+  @media (max-width: 600px) {
     .stats { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 420px) {
     .top { margin-left: 44px; }
   }
 </style>
@@ -289,6 +306,7 @@
           <option value="claimable">Claimable</option>
           <option value="apr">Est. APR</option>
           <option value="poolApr">Pool APR</option>
+          <option value="net">Net vs holding</option>
           <option value="value">Position value</option>
           <option value="pair">Pair</option>
           <option value="wallet">Wallet</option>
@@ -324,7 +342,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=27"></script>
-<script src="app.js?v=27"></script>
+<script src="yield-core.js?v=32"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>

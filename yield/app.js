@@ -188,6 +188,12 @@
     const filtered = shown.length !== all.length;
     const walletsWithPos = new Set(all.map((p) => p.owner)).size;
     const errs = all.filter((p) => p.feeError).length;
+    // Net over the shown positions that have one (9mm and Switch on PulseChain so far).
+    const withNet = shown.filter((p) => p.netUsd != null);
+    const net = withNet.reduce((s, p) => s + p.netUsd, 0);
+    const netTip = 'Net against holding: fees earned plus impermanent loss, summed over '
+      + (withNet.length === shown.length ? 'these positions.' : `the ${withNet.length} of ${shown.length} positions it can be worked out for (9mm and Switch on PulseChain so far).`)
+      + ' Click a row\'s Net for the working.';
 
     $('summary').className = 'panel summary' + (state.loading ? ' loading' : '');
     $('summary').innerHTML = `
@@ -198,6 +204,7 @@
       </div>
       <div class="stats">
         <div class="stat"><div class="k">LP value${filtered ? ' (shown)' : ''}</div><div class="v">${fmtUsd(value)}</div></div>
+        <div class="stat" title="${esc(netTip)}"><div class="k">Net vs holding</div><div class="v ${withNet.length ? signCls(net) : ''}">${withNet.length ? fmtSigned(net) : '—'}</div>${withNet.length && withNet.length < shown.length ? `<div class="s">${withNet.length} of ${shown.length} positions</div>` : ''}</div>
         <div class="stat"><div class="k">Avg est. APR</div><div class="v">${fmtPct(avgApr)}</div></div>
         <div class="stat"><div class="k">Est. fees / day</div><div class="v">${perDay == null ? '—' : fmtUsd(perDay)}</div></div>
       </div>
@@ -288,7 +295,7 @@
 
   /** Why a row has no Net, for the "—" tooltip and the popover. */
   function netUnknownWhy(p) {
-    if (!p.hasHistory) return "Needs the position's history, which only 9mm on PulseChain provides so far.";
+    if (!p.hasHistory) return "Needs the position's history, which only 9mm and Switch on PulseChain provide so far.";
     if (!(p.token0.usd > 0) || !(p.token1.usd > 0)) {
       return `${!(p.token0.usd > 0) ? p.token0.symbol : p.token1.symbol} has no price, so what holding would be worth can't be worked out.`;
     }
@@ -608,32 +615,43 @@
     throw new Error('Timed out waiting for the transaction. Check it on the explorer.');
   }
 
-  async function sendTx(data, to) {
+  async function sendTx(data, to, value = 0n) {
     const acct = state.account;
-    const hash = await state.provider.request({ method: 'eth_sendTransaction', params: [{ from: acct, to, data, value: '0x0' }] });
+    const hash = await state.provider.request({ method: 'eth_sendTransaction', params: [{ from: acct, to, data, value: '0x' + value.toString(16) }] });
     return hash;
   }
 
+  // Gas units a compound is costed at when there's no estimate of the real
+  // one yet (approvals, collect). Measured on a fork 2026-09-29: 209k for 2
+  // positions, 422k for 3, 504k for a single INC/PLSX position.
+  const COMPOUND_GAS = 500000n;
   /**
-   * Refuse a transaction that would leave the wallet with less than the
-   * chain's native reserve (1,000 PLS on PulseChain) after gas. Gas is the
-   * estimate at twice the current price, since the base fee can climb before
-   * the wallet signs. Returns the balance and cost for the confirm screen.
+   * Native kept back after every transaction: twice what a compound costs on
+   * this chain right now, so the wallet can always pay for the next two
+   * (Gavin, 2026-09-29; it replaced a flat 1,000 PLS).
    */
-  async function checkNativeReserve(chainKey, to, data) {
+  const reserveWei = (price, compoundGas) => 2n * (compoundGas || COMPOUND_GAS) * price;
+
+  /**
+   * Refuse a transaction that would leave the wallet below the native reserve
+   * after gas and `value`. Gas is the estimate at twice the current price,
+   * since the base fee can climb before the wallet signs. Returns the balance
+   * and cost for the confirm screen.
+   */
+  async function checkNativeReserve(chainKey, to, data, { value = 0n, compoundGas = null } = {}) {
     const chain = Y.chainOf(chainKey);
-    const reserve = BigInt(chain.nativeReserve || 0) * 10n ** 18n;
     const [bal, gas, price] = await Promise.all([
       Y.rpcCall('eth_getBalance', [state.account, 'latest'], chain.rpcs),
-      Y.rpcCall('eth_estimateGas', [{ from: state.account, to, data }], chain.rpcs),
+      Y.rpcCall('eth_estimateGas', [{ from: state.account, to, data, value: '0x' + value.toString(16) }], chain.rpcs),
       Y.rpcCall('eth_gasPrice', [], chain.rpcs),
     ]);
+    const reserve = reserveWei(BigInt(price), compoundGas);
     const balance = BigInt(bal), cost = BigInt(gas) * BigInt(price) * 2n;
-    const after = balance - cost;
-    if (reserve > 0n && after < reserve) {
+    const after = balance - cost - value;
+    if (after < reserve) {
       const f = (w) => fmtAmt(Number(w) / 1e18);
-      throw new Error(`Needs up to ${f(cost)} ${chain.native} for gas and the wallet has ${f(balance)} ${chain.native}; `
-        + `at least ${f(reserve)} ${chain.native} must stay in the wallet. Add ${chain.native} and try again.`);
+      throw new Error(`Needs up to ${f(cost + value)} ${chain.native}${value ? ' (gas and the amount wrapped)' : ' for gas'} and the wallet has ${f(balance)} ${chain.native}; `
+        + `at least ${f(reserve)} ${chain.native} (twice the cost of a compound) must stay in the wallet. Add ${chain.native} and try again.`);
     }
     return { balance, cost, after, reserve };
   }
@@ -662,7 +680,7 @@
         Y.rpcCall('eth_gasPrice', [], chain.rpcs),
       ]);
       const native = (Number(BigInt(gas)) * Number(BigInt(price))) / 1e18;
-      return { native, symbol: chain.native, usd: native * (state.nativeUsd[chain.key] || 0) };
+      return { native, symbol: chain.native, usd: native * (state.nativeUsd[chain.key] || 0), units: BigInt(gas), price: BigInt(price) };
     } catch (_) { return null; }
   }
 
@@ -688,6 +706,31 @@
     return null;
   }
   const hasWrappedSide = (g) => !!unwrapPlan(g, 0n, 0n, true);
+
+  /**
+   * What the wallet could add on top of the fees: its balances of both tokens
+   * and, for a WPLS/WETH side, native above the reserve (after the compound
+   * and the wrap, both at twice the gas price). Null when it can't be read.
+   */
+  async function topUpContext(g, f0, f1, gas) {
+    const chain = Y.chainOf(g.chain), rpcs = chain.rpcs, acct = state.account, t = g.target;
+    const wrappedIndex = g.token0.address === chain.wrapped ? 0 : g.token1.address === chain.wrapped ? 1 : -1;
+    const bal = (tok) => Y.ethCall(tok, Y.SEL.balanceOf + Y.addrWord(acct), null, rpcs).then((h) => Y.wordsOf(h)[0]);
+    const [ps, w0, w1, nativeHex, priceHex, wrapGasHex] = await Promise.all([
+      Y.ethCall(t.poolId, Y.SEL[Y.DEXES[g.dex].poolState || 'slot0'], null, rpcs),
+      bal(g.token0.address), bal(g.token1.address),
+      Y.rpcCall('eth_getBalance', [acct, 'latest'], rpcs),
+      Y.rpcCall('eth_gasPrice', [], rpcs),
+      wrappedIndex < 0 ? '0x0' : Y.rpcCall('eth_estimateGas', [{ from: acct, to: chain.wrapped, data: Y.SEL.deposit, value: '0x1' }], rpcs).catch(() => '0xc350'),
+    ]);
+    const w = Y.wordsOf(ps), price = BigInt(priceHex), compoundGas = gas && gas.units ? gas.units : COMPOUND_GAS;
+    const keep = reserveWei(price, compoundGas) + 2n * compoundGas * price + 2n * BigInt(wrapGasHex) * price;
+    const nativeBal = BigInt(nativeHex);
+    const native = wrappedIndex < 0 || nativeBal <= keep ? 0n : nativeBal - keep;
+    const plan = Y.topUpPlan({ sqrtPriceX96: w[0].toString(), tick: Number(BigInt.asIntN(24, w[1])), tickLower: t.tickLower, tickUpper: t.tickUpper,
+      fee0: f0, fee1: f1, wallet0: w0, wallet1: w1, native, wrappedIndex });
+    return { ...plan, compoundGas, reserve: reserveWei(price, compoundGas), wrapCost: 2n * BigInt(wrapGasHex) * price };
+  }
 
   async function runGroup(g, mode, opts = {}) {
     const label = `${g.token0.symbol}/${g.token1.symbol}`;
@@ -715,6 +758,16 @@
 
       let data, summary;
       if (mode === 'compound') {
+        // Before any approval: can the wallet pay for a compound at all (its
+        // gas at twice the price, plus the reserve of two more)? Otherwise an
+        // approval goes through and the compound is refused after it.
+        const [balHex, priceHex] = await Promise.all([Y.rpcCall('eth_getBalance', [acct, 'latest'], rpcs), Y.rpcCall('eth_gasPrice', [], rpcs)]);
+        const need = 4n * COMPOUND_GAS * BigInt(priceHex);
+        if (BigInt(balHex) < need) {
+          const f = (w) => fmtAmt(Number(w) / 1e18);
+          throw new Error(`A compound needs about ${f(need / 2n)} ${chain.native} for gas and at least as much again must stay in the wallet (${f(need)} ${chain.native} in all); `
+            + `the wallet has ${f(BigInt(balHex))} ${chain.native}. Add ${chain.native} and try again.`);
+        }
         const t = g.target;
         const onchain = await Y.readPosition(g.nfpm, t.id, rpcs);
         if (onchain.token0 !== g.token0.address || onchain.token1 !== g.token1.address) throw new Error('Target position does not match this pair');
@@ -741,12 +794,44 @@
       // Final dry run of the exact bytes the wallet will sign.
       await Y.ethCall(g.nfpm, data, acct, rpcs);
       const gas = await gasQuote(g.nfpm, data, g.chain);
-      const native = await checkNativeReserve(g.chain, g.nfpm, data);
+      const native = await checkNativeReserve(g.chain, g.nfpm, data, { compoundGas: mode === 'compound' && gas ? gas.units : null });
 
       let unwrapped = mode === 'collect' && !!unwrapPlan(g, f0, f1, state.prefs.unwrapNative);
+      let fromWalletUsd = 0;
       if (!opts.skipConfirm) {
-        const res = await confirmModal(g, mode, { u0, u1, claimUsd, summary, gas, native, count: ids.length });
+        // Compound all stays fees-only: only a single compound offers the top-up.
+        const topUp = mode === 'compound' ? await topUpContext(g, f0, f1, gas).catch(() => null) : null;
+        const res = await confirmModal(g, mode, { u0, u1, claimUsd, summary, gas, native, count: ids.length, topUp });
         if (!res.ok) { delete state.status[g.statusKey || g.key]; renderList(); return false; }
+        if (mode === 'compound' && topUp && res.topUp > 0) {
+          const x = Y.topUpAt(topUp, res.topUp);
+          const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
+          if (x.wrap > 0n) {
+            // The position manager pays a side all in native or all in the
+            // wrapped token, never a mix, so native is wrapped first.
+            const wrapped = Y.chainOf(g.chain).wrapped;
+            await checkNativeReserve(g.chain, wrapped, Y.SEL.deposit, { value: x.wrap, compoundGas: topUp.compoundGas });
+            setStatus(g.statusKey || g.key, `${label}: wrap ${fmtAmt(Number(x.wrap) / 1e18)} ${esc(chain.native)} in your wallet…`);
+            const wh = await sendTx(Y.SEL.deposit, wrapped, x.wrap);
+            setStatus(g.statusKey || g.key, `${label}: wrapping ${txLink(wh, g.chain)}…`);
+            const wrc = await waitReceipt(wh, rpcs);
+            if (wrc.status !== '0x1') throw new Error('Wrapping ' + chain.native + ' failed');
+          }
+          await ensureAllowance(g, g.token0, x.n0, label);
+          await ensureAllowance(g, g.token1, x.n1, label);
+          setStatus(g.statusKey || g.key, 'Simulating with the top-up…');
+          const t = g.target;
+          const sim2 = await Y.ethCall(g.nfpm, Y.buildCompoundData({ ids, owner: acct, targetId: t.id, amount0: x.n0, amount1: x.n1, deadline }), acct, rpcs);
+          const r2 = Y.decodeIncreaseResult(sim2);
+          const bps = state.prefs.slippageBps;
+          data = Y.buildCompoundData({ ids, owner: acct, targetId: t.id, amount0: x.n0, amount1: x.n1,
+            min0: Y.withSlippage(r2.used0, bps), min1: Y.withSlippage(r2.used1, bps), deadline });
+          await Y.ethCall(g.nfpm, data, acct, rpcs);
+          const used0 = Y.toUnits(r2.used0, d0), used1 = Y.toUnits(r2.used1, d1);
+          summary.usedUsd = used0 * g.token0.usd + used1 * g.token1.usd;
+          fromWalletUsd = Math.max(0, summary.usedUsd - claimUsd);
+          summary.leftUsd = Math.max(0, claimUsd - summary.usedUsd);
+        }
         // The checkbox on the confirm screen changes the transaction itself:
         // rebuild it and re-run the same dry run and reserve check.
         if (mode === 'collect' && hasWrappedSide(g) && res.unwrap !== state.prefs.unwrapNative) {
@@ -760,24 +845,26 @@
 
       // The wallet may have been moved off this chain while the modal was open.
       if (state.chainId !== chain.id) await switchChain(g.chain);
-      // Re-check just before signing. The add is capped at the fees read
-      // above; the same tx collects at least that much first, so tokens
-      // already in the wallet (WPLS included) are never drawn on. That only
-      // holds if nothing collected these fees since, e.g. another tab.
+      // Re-check just before signing. Fees-only (the default, and always for
+      // Compound all): the add is capped at the fees read above and the same
+      // tx collects at least that much first, so the wallet's own tokens are
+      // never drawn on. That only holds if nothing collected these fees since,
+      // e.g. another tab. With a top-up the user chose the wallet amounts.
       if (mode === 'compound') {
         const now = await Y.fetchFees(ids.map((id) => ({ id, owner: acct, nfpm: g.nfpm, chain: g.chain })));
         if (now.some((f) => f.error)) throw new Error('Fee re-check failed; nothing was sent. Refresh and try again.');
         const n0 = now.reduce((s, f) => s + f.fee0, 0n), n1 = now.reduce((s, f) => s + f.fee1, 0n);
         if (n0 < f0 || n1 < f1) throw new Error('These fees were collected elsewhere since you confirmed; nothing was sent. Refresh and try again.');
       }
-      await checkNativeReserve(g.chain, g.nfpm, data);
+      await checkNativeReserve(g.chain, g.nfpm, data, { compoundGas: mode === 'compound' && gas ? gas.units : null });
+      if (fromWalletUsd > 0) await Y.ethCall(g.nfpm, data, acct, rpcs); // the wallet's tokens are still there
       setStatus(g.statusKey || g.key, 'Confirm in your wallet…');
       const hash = await sendTx(data, g.nfpm);
       setStatus(g.statusKey || g.key, `Pending ${txLink(hash, g.chain)}…`);
       const rc = await waitReceipt(hash, rpcs);
       if (rc.status !== '0x1') throw new Error('Transaction reverted ' + hash);
       setStatus(g.statusKey || g.key, mode === 'compound'
-        ? `Compounded ${fmtUsd(summary.usedUsd)} into #${esc(summary.t.id)} ${txLink(hash, g.chain)}${summary.leftUsd >= 0.01 ? ` · ${fmtUsd(summary.leftUsd)} left in wallet` : ''}`
+        ? `Compounded ${fmtUsd(summary.usedUsd)} into #${esc(summary.t.id)}${fromWalletUsd >= 0.01 ? ` (${fmtUsd(fromWalletUsd)} from your wallet)` : ''} ${txLink(hash, g.chain)}${summary.leftUsd >= 0.01 ? ` · ${fmtUsd(summary.leftUsd)} left in wallet` : ''}`
         : `Collected ${fmtUsd(claimUsd)} to your wallet${unwrapped ? ` (W${esc(chain.native)} as ${esc(chain.native)})` : ''} ${txLink(hash, g.chain)}`, 'ok');
       return true;
     } catch (e) {
@@ -796,34 +883,84 @@
     ];
     if (mode === 'compound') {
       rows.push(['Adds to', `#${esc(s.t.id)} · ${feePct(s.t.feeTier)}${s.t.estApr == null ? '' : ` · est. ${fmtPct(s.t.estApr)} APR`}`]);
-      rows.push(['Added', `${fmtAmt(s.used0)} ${sym0} + ${fmtAmt(s.used1)} ${sym1}<br>${fmtUsd(s.usedUsd)}`]);
-      rows.push(['Stays in wallet', `${fmtAmt(Math.max(0, s.left0))} ${sym0} + ${fmtAmt(Math.max(0, s.left1))} ${sym1}<br>${fmtUsd(s.leftUsd)}`]);
+      rows.push(['Added', `<span id="mAdded">${fmtAmt(s.used0)} ${sym0} + ${fmtAmt(s.used1)} ${sym1}<br>${fmtUsd(s.usedUsd)}</span>`]);
+      rows.push(['Fees left in wallet', `<span id="mLeft">${fmtAmt(Math.max(0, s.left0))} ${sym0} + ${fmtAmt(Math.max(0, s.left1))} ${sym1}<br>${fmtUsd(s.leftUsd)}</span>`]);
     }
     rows.push(['Network', esc(g.chainName)]);
     rows.push(['Network fee', d.gas ? `≈ ${fmtAmt(d.gas.native)} ${esc(d.gas.symbol)}${d.gas.usd ? ` (${fmtUsd(d.gas.usd)})` : ''}` : 'Your wallet will show it']);
     if (d.native) {
       const chain = Y.chainOf(g.chain);
-      rows.push([`${esc(chain.native)} left after gas`, `≥ ${fmtAmt(Number(d.native.after) / 1e18)} ${esc(chain.native)}`
+      rows.push([`${esc(chain.native)} left after gas`, `≥ <span id="mNative">${fmtAmt(Number(d.native.after) / 1e18)}</span> ${esc(chain.native)}`
         + (d.native.reserve > 0n ? `<br><span style="color:var(--dim)">keeps at least ${fmtAmt(Number(d.native.reserve) / 1e18)}</span>` : '')]);
     }
     const leftShare = mode === 'compound' && d.claimUsd > 0 ? s.leftUsd / d.claimUsd : 0;
+    const tu = mode === 'compound' ? d.topUp : null;
+    const canTopUp = !!tu && tu.lMax > tu.lFees * 1.001;
+    const nat = esc(Y.chainOf(g.chain).native);
+    const units = (raw, dec) => Number(raw) / 10 ** dec;
+    // The preview at slider position t (0..1); the simulation after Confirm sets the real amounts.
+    const preview = (t) => {
+      const x = Y.topUpAt(tu, t);
+      const a0 = units(x.n0, g.token0.decimals), a1 = units(x.n1, g.token1.decimals);
+      const w0 = units(x.s0.fromWallet + x.s0.fromNative, g.token0.decimals), w1 = units(x.s1.fromWallet + x.s1.fromNative, g.token1.decimals);
+      const l0 = units(tu.fee0 - x.s0.fromFees, g.token0.decimals), l1 = units(tu.fee1 - x.s1.fromFees, g.token1.decimals);
+      return {
+        added: `≈ ${fmtAmt(a0)} ${sym0} + ${fmtAmt(a1)} ${sym1}<br>${fmtUsd(a0 * g.token0.usd + a1 * g.token1.usd)}`,
+        wallet: `${fmtAmt(w0)} ${sym0} + ${fmtAmt(w1)} ${sym1}${x.wrap > 0n ? `<br><span style="color:var(--dim)">incl. ${fmtAmt(Number(x.wrap) / 1e18)} ${nat} wrapped first</span>` : ''}<br>${fmtUsd(w0 * g.token0.usd + w1 * g.token1.usd)}`,
+        left: `${fmtAmt(Math.max(0, l0))} ${sym0} + ${fmtAmt(Math.max(0, l1))} ${sym1}<br>${fmtUsd(Math.max(0, l0) * g.token0.usd + Math.max(0, l1) * g.token1.usd)}`,
+        wraps: x.wrap > 0n,
+        // Wrapping spends native twice over: the amount, and the wrap's own gas.
+        nativeAfter: d.native ? Number(d.native.after - (x.wrap > 0n ? x.wrap + tu.wrapCost : 0n)) / 1e18 : null,
+      };
+    };
+    const slider = !canTopUp ? (tu ? `<p class="note">Your wallet has nothing more that fits this range, so only the fees go in.</p>` : '') : `
+      <div class="topup">
+        <div class="topup-h"><span>Add from your wallet too</span><span id="mPct">Fees only</span></div>
+        <input type="range" id="mTop" min="0" max="1000" step="1" value="0" aria-label="How much to add from your wallet">
+        <div class="topup-ends"><span>Fees only</span><span>Most that fits</span></div>
+        <div class="kv" id="mWalletRow" hidden><div class="k">From your wallet</div><div class="v" id="mWallet"></div></div>
+      </div>`;
     const gasHeavy = d.gas && d.gas.usd && d.gas.usd > d.claimUsd * 0.2;
     return new Promise((resolve) => {
       const root = $('modalRoot');
       root.innerHTML = `<div class="modal-bg" id="mbg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mh">
         <h2 id="mh">${mode === 'compound' ? 'Compound' : 'Collect'} ${sym0} / ${sym1}</h2>
         ${rows.map(([k, v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+        ${slider}
         ${mode === 'collect' && hasWrappedSide(g) ? `<label class="modal-toggle"><input type="checkbox" id="mUnwrap"${state.prefs.unwrapNative ? ' checked' : ''}>
           Receive W${esc(Y.chainOf(g.chain).native)} as ${esc(Y.chainOf(g.chain).native)}</label>` : ''}
-        ${mode === 'compound' ? `<p class="note">One transaction collects the fees to your wallet and adds what fits the target's range. Only these fees are added: tokens already in your wallet, including ${esc(Y.chainOf(g.chain).native)} and W${esc(Y.chainOf(g.chain).native)}, are not used. The rest stays in your wallet${leftShare > 0.25 ? '. <span style="color:var(--warn)">The fees are lopsided for this range, so a large share is left over.</span>' : '.'} Minimums are set ${(state.prefs.slippageBps / 100).toFixed(2)}% under the simulation.</p>` : `<p class="note">Fees go to your wallet; nothing is re-added.${hasWrappedSide(g) ? ` With the box ticked, the W${esc(Y.chainOf(g.chain).native)} arrives unwrapped as ${esc(Y.chainOf(g.chain).native)} in the same transaction; the other token is unchanged.` : ''}</p>`}
+        ${mode === 'compound' ? `<p class="note">One transaction collects the fees to your wallet and adds what fits the target's range. ${canTopUp ? `By default only the fees go in. Move the slider to add ${sym0} and ${sym1} from your wallet as well, up to what fits the range at today's price${tu.wrappedIndex >= 0 ? `, including ${nat} (wrapped to W${nat} in a separate transaction first)` : ''}. At least ${fmtAmt(Number(tu.reserve) / 1e18)} ${nat}, twice the cost of this compound, always stays in the wallet.` : `Only these fees are added; tokens already in your wallet are not used.`} Fees that don't fit stay in your wallet${leftShare > 0.25 ? `. <span id="mLop" style="color:var(--warn)">The fees are lopsided for this range, so a large share is left over${canTopUp ? '; the slider can use it up' : ''}.</span>` : '.'} Minimums are set ${(state.prefs.slippageBps / 100).toFixed(2)}% under the simulation.</p>` : `<p class="note">Fees go to your wallet; nothing is re-added.${hasWrappedSide(g) ? ` With the box ticked, the W${esc(Y.chainOf(g.chain).native)} arrives unwrapped as ${esc(Y.chainOf(g.chain).native)} in the same transaction; the other token is unchanged.` : ''}</p>`}
         ${gasHeavy ? '<p class="note warn">The network fee is more than a fifth of what you are claiming.</p>' : ''}
         <div class="modal-actions"><button class="btn" type="button" id="mNo">Cancel</button><button class="btn primary" type="button" id="mYes">Confirm in wallet</button></div>
       </div></div>`;
       const done = (ok) => {
         const box = $('mUnwrap');
         const unwrap = box ? box.checked : state.prefs.unwrapNative;
-        root.innerHTML = ''; document.removeEventListener('keydown', onKey); resolve({ ok, unwrap });
+        const range = $('mTop');
+        const topUp = range ? Number(range.value) / 1000 : 0;
+        root.innerHTML = ''; document.removeEventListener('keydown', onKey); resolve({ ok, unwrap, topUp });
       };
+      const range = $('mTop');
+      if (range) {
+        const fresh = { added: $('mAdded').innerHTML, left: $('mLeft').innerHTML, native: $('mNative') ? $('mNative').textContent : '' };
+        range.addEventListener('input', () => {
+          const t = Number(range.value) / 1000;
+          if (t === 0) {
+            $('mAdded').innerHTML = fresh.added; $('mLeft').innerHTML = fresh.left;
+            if ($('mNative')) $('mNative').textContent = fresh.native;
+            if ($('mLop')) $('mLop').hidden = false;
+            $('mWalletRow').hidden = true; $('mPct').textContent = 'Fees only'; $('mYes').textContent = 'Confirm in wallet';
+            return;
+          }
+          const v = preview(t);
+          $('mAdded').innerHTML = v.added; $('mLeft').innerHTML = v.left; $('mWallet').innerHTML = v.wallet;
+          $('mWalletRow').hidden = false;
+          if ($('mNative') && v.nativeAfter != null) $('mNative').textContent = fmtAmt(v.nativeAfter);
+          if ($('mLop')) $('mLop').hidden = true;
+          $('mPct').textContent = t === 1 ? 'Most that fits' : Math.round(t * 100) + '%';
+          $('mYes').textContent = v.wraps ? 'Wrap, then confirm in wallet' : 'Confirm in wallet';
+        });
+      }
       const onKey = (e) => { if (e.key === 'Escape') done(false); };
       document.addEventListener('keydown', onKey);
       $('mNo').onclick = () => done(false);
