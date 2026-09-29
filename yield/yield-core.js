@@ -23,6 +23,9 @@
       // in ~300 ms; rpc.pulsechain.com takes 4 s for 10 and times out at 25.
       rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
       archiveRpcs: ['https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
+      // eth_getLogs from block 0: rpc.pulsechain.com takes the full range in
+      // one call (6 positions' Collect logs in 0.8 s); g4mm4 caps it at 10k blocks.
+      logRpcs: ['https://rpc.pulsechain.com'],
       explorerTx: 'https://otter.pulsechain.com/tx/',
       // Read from each PulseChain position manager's WETH9(), 2026-09-25.
       wrapped: '0xa1077a294dde1b09bb078844df40758a5d0f9a27',
@@ -74,7 +77,9 @@
    */
   const DEXES = {
     '9mm': { label: '9mm', chain: 'pulsechain', nfpm: '0xcc05bf158202b4f461ede8843d76dcd7bbad07f2' },
-    lbs: { label: 'LibertySwap', chain: 'pulsechain', nfpm: '0x19b1347900840e7a299f339868881750918fad91' },
+    // Its subgraph's collectedFeesToken1 is a copy of collectedFeesToken0
+    // (2026-09-29), so collected amounts come from on-chain Collect logs.
+    lbs: { label: 'LibertySwap', chain: 'pulsechain', nfpm: '0x19b1347900840e7a299f339868881750918fad91', collectsFromLogs: true },
     // Algebra names its unwrap differently; unwrapWETH9 reverts on it (simulated).
     switch: { label: 'Switch', chain: 'pulsechain', nfpm: '0xbfd64d5f12ec1389460d02861cbbb939b99230c6',
       unwrap: 'unwrapWNativeToken',
@@ -118,6 +123,10 @@
     unwrapWNativeToken: '0x69bc35b2', // unwrapWNativeToken(uint256,address): Algebra (Switch)
     sweepToken: '0xdf2ab5bb',         // sweepToken(address,uint256,address)
     deposit: '0xd0e30db0',            // deposit(): wrap native into WPLS/WETH
+  };
+  // Event topics, from `cast keccak`.
+  const TOPIC = {
+    collect: '0x40d0efd1a53d60ecbf40971b9daf7dc90178c3aadc7aab1765632738fa8b8f01', // Collect(uint256,address,uint256,uint256)
   };
 
   const MAX128 = (1n << 128n) - 1n;
@@ -433,10 +442,21 @@
    * it held at that moment: its liquidity then, at the pool price read from an
    * archive node at that block (the subgraph ignores block-pinned queries).
    */
-  async function attachHistory(positions, owners, dex = '9mm', url = CFG.subgraph) {
+  async function attachHistory(positions, owners, dex = '9mm', source = CFG.subgraph) {
     if (!positions.length) return;
     const tracked = new Set(owners.map((o) => o.toLowerCase()));
-    const snaps = await fetchSnapshots(positions.map((p) => String(p.id)), url);
+    const ids = positions.map((p) => String(p.id));
+    // `source` is a subgraph URL, or a loader for DEXes read through our Worker.
+    const [snaps, collects] = await Promise.all([
+      typeof source === 'function' ? source(positions) : fetchSnapshots(ids, source),
+      DEXES[dex].collectsFromLogs ? fetchCollects(DEXES[dex].nfpm, ids) : null,
+    ]);
+    if (collects) {
+      for (const p of positions) {
+        const d0 = num(p.pool.token0.decimals), d1 = num(p.pool.token1.decimals);
+        p.collects = (collects[String(p.id)] || []).map((c) => ({ block: c.block, a0: toUnits(c.a0, d0), a1: toUnits(c.a1, d1) }));
+      }
+    }
     const received = [];
     for (const p of positions) {
       p.snapshots = reconcile(p, snaps[String(p.id)]);
@@ -456,6 +476,50 @@
         Number(BigInt.asIntN(24, w[1])), num(p.tickLower), num(p.tickUpper));
       p.tenure.startAmounts = { a0: a0 / 10 ** num(p.pool.token0.decimals), a1: a1 / 10 ** num(p.pool.token1.decimals) };
     });
+  }
+
+  /**
+   * Every Collect event (fees and withdrawn principal alike) per position, from
+   * block 0, 50 positions per eth_getLogs: { id: [{ block, a0, a1 }] }, raw.
+   */
+  async function fetchCollects(nfpm, ids) {
+    const out = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const chunk = ids.slice(i, i + 50);
+      const logs = await rpcCall('eth_getLogs', [{ address: nfpm, fromBlock: '0x0', toBlock: 'latest',
+        topics: [TOPIC.collect, chunk.map((id) => '0x' + word(id))] }], CHAINS.pulsechain.logRpcs);
+      for (const l of logs || []) {
+        const w = wordsOf(l.data);
+        const id = BigInt(l.topics[1]).toString();
+        (out[id] = out[id] || []).push({ block: parseInt(l.blockNumber, 16), a0: w[1], a1: w[2] });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * LibertySwap history through our Worker (its subgraph needs a private key):
+   * snapshots, and the positions' lifetime deposit/withdraw totals merged onto
+   * the rows. The rows' collectedFeesToken* are dropped: that field is broken
+   * in this subgraph and fees come from Collect logs.
+   */
+  async function lbsHistory(positions) {
+    const byId = new Map(positions.map((p) => [String(p.id), p]));
+    const ids = [...byId.keys()], snaps = {};
+    for (let i = 0; i < ids.length; i += 100) {
+      const res = await fetchT(`${CFG.lbsProxy}/lbs/history?ids=${ids.slice(i, i + 100).join(',')}`, { method: 'GET' }, 25000);
+      if (!res.ok) throw new Error('LibertySwap history HTTP ' + res.status);
+      const j = await res.json();
+      if (j.error) throw new Error('LibertySwap history: ' + j.error);
+      for (const t of j.positions || []) {
+        const p = byId.get(String(t.id));
+        if (!p) continue;
+        for (const k of ['depositedToken0', 'depositedToken1', 'withdrawnToken0', 'withdrawnToken1']) p[k] = t[k];
+        delete p.collectedFeesToken0; delete p.collectedFeesToken1;
+      }
+      Object.assign(snaps, j.snapshots || {});
+    }
+    return snaps;
   }
 
   /** Active liquidity per pool, read on-chain: keyed by lowercased pool id. */
@@ -485,6 +549,7 @@
     }));
     const liq = all.length ? await fetchPoolLiquidity(all.map((p) => p.pool.id), rpcs) : {};
     for (const p of all) p.pool.liquidity = liq[p.pool.id.toLowerCase()] || '0';
+    await attachHistory(all, owners, 'lbs', lbsHistory).catch(() => { /* Net unknown */ });
     return { positions: all };
   }
 
@@ -995,8 +1060,11 @@
       // collectedFeesToken* counts principal (9mm) this is collected +
       // unclaimed - withdrawn over the stretch; where it's fees only (Switch),
       // the principal still owed is withdrawn - (collected - fees) today.
+      // Collect logs (LibertySwap): everything collected after the stretch began.
+      const fromBlock = t.received ? num(snaps[t.start].blockNumber) : -1;
+      const logged = (i) => p.collects.filter((c) => c.block > fromBlock).reduce((s, c) => s + (i === 0 ? c.a0 : c.a1), 0);
       const earned = (i) => {
-        const dFees = n(last, 'collectedFeesToken' + i) - n(base, 'collectedFeesToken' + i);
+        const dFees = p.collects ? logged(i) : n(last, 'collectedFeesToken' + i) - n(base, 'collectedFeesToken' + i);
         const owed = DEXES[p.dex] && DEXES[p.dex].feesOnly
           ? Math.max(0, n(p, 'withdrawnToken' + i) - (n(p, 'collectedToken' + i) - n(p, 'collectedFeesToken' + i)))
           : n(last, 'withdrawnToken' + i) - n(base, 'withdrawnToken' + i);
