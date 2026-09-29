@@ -188,11 +188,11 @@
     const filtered = shown.length !== all.length;
     const walletsWithPos = new Set(all.map((p) => p.owner)).size;
     const errs = all.filter((p) => p.feeError).length;
-    // Net over the shown positions that have one (9mm and Switch on PulseChain so far).
+    // Net over the shown positions that have one (9mm, Switch and LibertySwap on PulseChain so far).
     const withNet = shown.filter((p) => p.netUsd != null);
     const net = withNet.reduce((s, p) => s + p.netUsd, 0);
     const netTip = 'Net against holding: fees earned plus impermanent loss, summed over '
-      + (withNet.length === shown.length ? 'these positions.' : `the ${withNet.length} of ${shown.length} positions it can be worked out for (9mm and Switch on PulseChain so far).`)
+      + (withNet.length === shown.length ? 'these positions.' : `the ${withNet.length} of ${shown.length} positions it can be worked out for (9mm, Switch and LibertySwap on PulseChain so far).`)
       + ' Click a row\'s Net for the working.';
 
     $('summary').className = 'panel summary' + (state.loading ? ' loading' : '');
@@ -295,7 +295,7 @@
 
   /** Why a row has no Net, for the "—" tooltip and the popover. */
   function netUnknownWhy(p) {
-    if (!p.hasHistory) return "Needs the position's history, which only 9mm and Switch on PulseChain provide so far.";
+    if (!p.hasHistory) return "Needs the position's history, which only 9mm, Switch and LibertySwap on PulseChain provide so far.";
     if (!(p.token0.usd > 0) || !(p.token1.usd > 0)) {
       return `${!(p.token0.usd > 0) ? p.token0.symbol : p.token1.symbol} has no price, so what holding would be worth can't be worked out.`;
     }
