@@ -7,6 +7,35 @@
 <meta name="description" content="Space Invaders, PulseChain edition. The SEC, Interpol, FUD and gatekeeping descend on your tokens. One cannon, one shot in the air at a time.">
 <meta property="og:title" content="Pulse Cannon: defend the tokens">
 <meta property="og:description" content="An origami invaders game from the PulseChain universe. Play free at chingching.xyz">
+<link rel="canonical" href="https://chingching.xyz/pulse-cannon/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ching Ching">
+<meta property="og:url" content="https://chingching.xyz/pulse-cannon/">
+<meta property="og:image" content="https://chingching.xyz/og/pulse-cannon.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://chingching.xyz/og/pulse-cannon.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "Pulse Cannon",
+  "url": "https://chingching.xyz/pulse-cannon/",
+  "description": "Space Invaders, PulseChain edition. The SEC, Interpol, FUD and gatekeeping descend on your tokens. One cannon, one shot in the air at a time.",
+  "image": "https://chingching.xyz/og/pulse-cannon.jpg",
+  "genre": "Arcade",
+  "gamePlatform": "Web browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "isAccessibleForFree": true,
+  "publisher": {
+    "@type": "Organization",
+    "name": "Ching Ching",
+    "url": "https://chingching.xyz/"
+  }
+}
+</script>
 <link rel="icon" type="image/svg+xml" href="/arcade/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/arcade/favicon-32.png">
 <link rel="apple-touch-icon" href="/arcade/apple-touch-icon.png">
@@ -38,8 +67,8 @@ body {
   border-color:transparent #EAE3D2 transparent transparent;
   filter:drop-shadow(-2px 2px 2px rgba(58,54,48,0.10));
 }
-h1 { font-size:30px; font-weight:900; letter-spacing:-0.02em; color:#2E2A24; }
-h1 .accent { color:#E4007C; }
+h1, .h1 { font-size:30px; font-weight:900; letter-spacing:-0.02em; color:#2E2A24; }
+h1 .accent, .h1 .accent { color:#E4007C; }
 .sub { font-size:13px; color:rgba(58,54,48,0.55); margin-top:4px; }
 .btn {
   display:inline-block; border:none; cursor:pointer; font:inherit;
@@ -154,7 +183,7 @@ h1 .accent { color:#E4007C; }
 
 <!-- ===================== GAME OVER ===================== -->
 <div id="over" class="panel hidden">
-  <h1 id="overTitle">REKT<span class="accent">!</span></h1>
+  <h2 id="overTitle" class="h1">REKT<span class="accent">!</span></h2>
   <div class="sub" id="deathCause"></div>
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
@@ -198,7 +227,7 @@ h1 .accent { color:#E4007C; }
 
 <!-- ===================== LEADERBOARD ===================== -->
 <div id="board" class="panel hidden">
-  <h1 style="font-size:22px;">LEADERBOARD</h1>
+  <h2 class="h1" style="font-size:22px;">LEADERBOARD</h2>
   <div class="tabs">
     <div class="tab on" data-p="daily">Daily</div>
     <div class="tab" data-p="weekly">Weekly</div>
