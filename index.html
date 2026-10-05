@@ -3,13 +3,45 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Ching Ching - Portfolio</title>
+<title>Ching Ching: PulseChain and Ethereum Portfolio Tracker</title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="description" content="View a PulseChain and Ethereum wallet portfolio">
-<meta property="og:title" content="Ching Ching - Portfolio">
-<meta property="og:description" content="View token holdings, prices, and portfolio value across PulseChain and Ethereum">
+<meta name="description" content="Track any PulseChain or Ethereum wallet: tokens, HEX stakes and LP positions with live prices and 24h moves. Free, read-only, nothing to connect.">
+<link rel="canonical" href="https://chingching.xyz/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ching Ching">
+<meta property="og:url" content="https://chingching.xyz/">
+<meta property="og:title" content="Ching Ching: PulseChain and Ethereum Portfolio Tracker">
+<meta property="og:description" content="Tokens, HEX stakes and LP positions for any PulseChain or Ethereum wallet, with live prices. Free and read-only.">
+<meta property="og:image" content="https://chingching.xyz/og/home.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://chingching.xyz/og/home.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://chingching.xyz/#website",
+      "url": "https://chingching.xyz/",
+      "name": "Ching Ching"
+    },
+    {
+      "@type": "MobileApplication",
+      "name": "Ching Ching",
+      "operatingSystem": "iOS",
+      "applicationCategory": "FinanceApplication",
+      "description": "PulseChain and Ethereum portfolio tracker with HEX stakes, LP positions, widgets and Apple Watch support.",
+      "url": "https://apps.apple.com/app/ching-ching/id1622965914",
+      "image": "https://chingching.xyz/apple-touch-icon.png",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    }
+  ]
+}
+</script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -168,6 +200,13 @@
   .app-link { font-size: 12px; color: #6a5acd; text-decoration: none; font-weight: 600; transition: color 0.2s; }
   .app-link:hover { color: #8a7aed; }
   .loading { text-align: center; padding: 60px 20px; color: #555; font-size: 14px; }
+  .intro { text-align: center; padding: 8px 4px 0; }
+  .intro h1 { font-size: 21px; line-height: 1.25; font-weight: 800; color: #e8e8e8; letter-spacing: -0.2px; }
+  .intro p { font-size: 13px; line-height: 1.5; color: #8a8a9a; margin-top: 10px; }
+  .intro-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-top: 4px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .intro-links a { font-size: 12px; font-weight: 600; color: #8a7aed; text-decoration: none; }
+  .intro-links a:hover { color: #b0a0ff; }
+  .intro-links a[hidden] { display: none; }
   .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.08); border-top-color: #6a5acd; border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .error { text-align: center; color: #ff3b30; padding: 40px 20px; font-size: 14px; }
@@ -243,13 +282,22 @@
     <button onclick="submitWallet()">View</button>
   </div>
   <div id="content">
-    <div class="loading"><div class="spinner"></div>Enter a wallet address</div>
+    <div class="intro" id="intro">
+      <h1>PulseChain and Ethereum portfolio tracker</h1>
+      <p>Paste any wallet address or .pls / .eth name to see its tokens, HEX stakes and LP positions, valued with live prices and 24h moves. Read-only: nothing to connect or sign.</p>
+    </div>
     <div class="input-section" id="inputSection">
       <input type="text" id="addrInput" placeholder="0x..., .pls or .eth name" spellcheck="false"
              onkeydown="if(event.key==='Enter')loadWallet()">
       <br>
       <button onclick="loadWallet()">View Portfolio</button>
     </div>
+    <nav class="intro-links" id="introLinks" aria-label="More from Ching Ching">
+      <a href="https://apps.apple.com/app/ching-ching/id1622965914" target="_blank" rel="noopener">iPhone app</a>
+      <a href="/arcade/">Arcade</a>
+      <a href="/oceanomics/">Oceanomics</a>
+      <a href="/yield/" data-app-hide hidden>LP Yield</a>
+    </nav>
   </div>
 </div>
 <div class="spark-tip" id="sparkTip"><div class="tv"></div><div class="td"></div></div>
@@ -1195,6 +1243,7 @@ document.addEventListener('click', e => {
     document.getElementById('walletTitle').textContent = name || shortAddr(wallet);
     document.getElementById('walletSubtitle').textContent = name ? shortAddr(wallet) : 'Portfolio';
     document.getElementById('inputSection')?.remove();
+    document.getElementById('intro')?.remove();
     loadWallet(wallet);
   } else {
     document.getElementById('walletTitle').textContent = 'Ching Ching';
@@ -1212,7 +1261,7 @@ document.addEventListener('click', e => {
   // App Review objects to in-app links to wallet tools that sign transactions.
   let embedded = new URLSearchParams(location.search).get('embed') === '1';
   try { if (embedded) sessionStorage.setItem('ccEmbed', '1'); else embedded = sessionStorage.getItem('ccEmbed') === '1'; } catch (_) { /* storage blocked */ }
-  if (!embedded) m.querySelectorAll('a[data-app-hide]').forEach(a => { a.hidden = false; });
+  if (!embedded) document.querySelectorAll('a[data-app-hide]').forEach(a => { a.hidden = false; });
 })();
 </script>
 </body>

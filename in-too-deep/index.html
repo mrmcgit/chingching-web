@@ -3,10 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>In Too Deep — Swim the real PLS chart | Ching Ching</title>
+<title>In Too Deep: Swim the real PLS chart | Ching Ching</title>
 <meta name="description" content="A tiny pufferfish over the actual PLS price history. Bump the whales, dodge the sharks, and never touch the seabed.">
-<meta property="og:title" content="In Too Deep — Swim the real PLS chart">
+<meta property="og:title" content="In Too Deep: Swim the real PLS chart">
 <meta property="og:description" content="An underwater arcade game built from the actual PLS price history. Play free at chingching.xyz">
+<link rel="canonical" href="https://chingching.xyz/in-too-deep/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ching Ching">
+<meta property="og:url" content="https://chingching.xyz/in-too-deep/">
+<meta property="og:image" content="https://chingching.xyz/og/in-too-deep.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://chingching.xyz/og/in-too-deep.jpg">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "VideoGame",
+  "name": "In Too Deep",
+  "url": "https://chingching.xyz/in-too-deep/",
+  "description": "A tiny pufferfish over the actual PLS price history. Bump the whales, dodge the sharks, and never touch the seabed.",
+  "image": "https://chingching.xyz/og/in-too-deep.jpg",
+  "genre": "Arcade",
+  "gamePlatform": "Web browser",
+  "applicationCategory": "Game",
+  "operatingSystem": "Any",
+  "isAccessibleForFree": true,
+  "publisher": {
+    "@type": "Organization",
+    "name": "Ching Ching",
+    "url": "https://chingching.xyz/"
+  }
+}
+</script>
 <link rel="icon" type="image/svg+xml" href="/arcade/favicon.svg">
 <link rel="icon" type="image/png" sizes="32x32" href="/arcade/favicon-32.png">
 <link rel="apple-touch-icon" href="/arcade/apple-touch-icon.png">
@@ -37,8 +66,8 @@ body {
   border-color:transparent #EAE3D2 transparent transparent;
   filter:drop-shadow(-2px 2px 2px rgba(58,54,48,0.10));
 }
-h1 { font-size:30px; font-weight:900; letter-spacing:-0.02em; color:#2E2A24; }
-h1 .accent { color:#E4572E; }
+h1, .h1 { font-size:30px; font-weight:900; letter-spacing:-0.02em; color:#2E2A24; }
+h1 .accent, .h1 .accent { color:#E4572E; }
 .sub { font-size:13px; color:rgba(58,54,48,0.55); margin-top:4px; }
 .btn {
   display:inline-block; border:none; cursor:pointer; font:inherit;
@@ -166,7 +195,7 @@ h1 .accent { color:#E4572E; }
 
 <!-- ===================== GAME OVER ===================== -->
 <div id="over" class="panel hidden">
-  <h1 id="overTitle">REKT<span class="accent">!</span></h1>
+  <h2 id="overTitle" class="h1">REKT<span class="accent">!</span></h2>
   <div class="sub" id="deathCause"></div>
   <div class="score-big" id="finalScore">0</div>
   <div class="newbest" id="newBest">&#9650; NEW PERSONAL BEST</div>
@@ -210,7 +239,7 @@ h1 .accent { color:#E4572E; }
 
 <!-- ===================== LEADERBOARD ===================== -->
 <div id="board" class="panel hidden">
-  <h1 style="font-size:22px;">LEADERBOARD</h1>
+  <h2 class="h1" style="font-size:22px;">LEADERBOARD</h2>
   <div class="tabs">
     <div class="tab on" data-p="daily">Daily</div>
     <div class="tab" data-p="weekly">Weekly</div>
