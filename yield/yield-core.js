@@ -27,6 +27,7 @@
       // one call (6 positions' Collect logs in 0.8 s); g4mm4 caps it at 10k blocks.
       logRpcs: ['https://rpc.pulsechain.com'],
       explorerTx: 'https://otter.pulsechain.com/tx/',
+      dexscreenerSlug: 'pulsechain',
       // Read from each PulseChain position manager's WETH9(), 2026-09-25.
       wrapped: '0xa1077a294dde1b09bb078844df40758a5d0f9a27',
       addChain: { chainName: 'PulseChain', nativeCurrency: { name: 'Pulse', symbol: 'PLS', decimals: 18 },
@@ -815,7 +816,40 @@
       if (native && !out.nativeUsd[ch]) out.nativeUsd[ch] = native;
     });
     await fillBlankSymbols(out.positions);
+    await fillMissingPrices(out.positions);
     return out;
+  }
+
+  /**
+   * Subgraphs price a token only through a path to their base asset, so a pool
+   * with no such path reads $0 on both sides: 9mm's pTUSD/pUSDC (#135104) has
+   * derivedUSD "0" for both while the 9mm site shows $26.93. Price those from
+   * DexScreener instead. A failed lookup leaves the row at 0 (shown as no price).
+   */
+  async function fillMissingPrices(positions) {
+    const missing = new Map(); // chain -> Set of token addresses
+    for (const p of positions) {
+      const ch = DEXES[p.dex].chain;
+      for (const t of [p.pool.token0, p.pool.token1]) {
+        if (num(t.derivedUSD) > 0) continue;
+        if (!missing.has(ch)) missing.set(ch, new Set());
+        missing.get(ch).add(t.id.toLowerCase());
+      }
+    }
+    const found = {};
+    await Promise.all([...missing].map(async ([ch, set]) => {
+      try {
+        const prices = await dexScreenerPrices([...set], chainOf(ch).dexscreenerSlug);
+        for (const [a, price] of Object.entries(prices)) found[ch + '|' + a] = price;
+      } catch (_) { /* keep 0 */ }
+    }));
+    for (const p of positions) {
+      const ch = DEXES[p.dex].chain;
+      for (const t of [p.pool.token0, p.pool.token1]) {
+        const price = !(num(t.derivedUSD) > 0) && found[ch + '|' + t.id.toLowerCase()];
+        if (price) t.derivedUSD = String(price);
+      }
+    }
   }
 
   /**
