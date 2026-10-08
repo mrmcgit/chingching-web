@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+# Not pages: PulseScan API paths Googlebot lifts from the home page script.
+Disallow: /api/
 
 Sitemap: https://chingching.xyz/sitemap.xml
