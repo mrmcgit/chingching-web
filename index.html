@@ -1059,13 +1059,40 @@ async function queryDexPairs(subgraph, addrs, dexLabel) {
     return out;
   } catch(e) { console.error('LP pairs', dexLabel, e); return {}; }
 }
+// 9mm's data API (data.9mm.pro; its GraphQL subgraphs stopped on 19 Oct 2026).
+const NINEMM_API = 'https://data.9mm.pro/v1/chains/369';
+async function nineMmPools(addrs) {
+  // URLs over 4,096 bytes are refused: 90 addresses a request. Non-pools are left out.
+  const out = [];
+  for (let i = 0; i < addrs.length; i += 90) {
+    const r = await fetch(`${NINEMM_API}/pools?addresses=${addrs.slice(i, i + 90).join(',')}`);
+    if (!r.ok) throw new Error('9mm pools HTTP ' + r.status);
+    out.push(...((await r.json()).data || []));
+  }
+  return out;
+}
+/// 9mm V2 pairs among the wallet's tokens, in queryDexPairs' shape.
+async function query9mmPairs(addrs) {
+  try {
+    const out = {};
+    for (const p of await nineMmPools(addrs)) {
+      if (p.protocol !== 'v2') continue;
+      out[p.address.toLowerCase()] = {
+        // lpSupply comes in raw units (reserves are already whole tokens); V2 LP has 18 decimals.
+        reserve0: parseFloat(p.reserve0)||0, reserve1: parseFloat(p.reserve1)||0, totalSupply: (parseFloat(p.lpSupply)||0) / 1e18,
+        t0: p.token0.address.toLowerCase(), t1: p.token1.address.toLowerCase(), pair: `${p.token0.symbol}/${p.token1.symbol}`, dex: '9mm'
+      };
+    }
+    return out;
+  } catch(e) { console.error('LP pairs 9mm', e); return {}; }
+}
 async function fetchPulseLP() {
   const raw = rawTokenLists['pulsechain'] || [];
   if (!raw.length) return [];
   const addrs = raw.map(t => t.contractAddress.toLowerCase());
   const [px, nm] = await Promise.all([
     queryDexPairs(CHAINS.pulsechain.subgraph, addrs, 'PulseX'),
-    queryDexPairs('https://info-api.9mm.pro/subgraphs/name/pulsechain/9mm', addrs, '9mm')
+    query9mmPairs(addrs)
   ]);
   const pairMap = { ...px, ...nm };
   // Value each LP by its underlying reserves x REAL DexScreener prices (a token with no
@@ -1092,34 +1119,40 @@ async function fetchPulseLP() {
   return positions.sort((a, b) => b.value - a.value);
 }
 
-/// 9mm V3 concentrated positions: compute token amounts from liquidity + ticks
-/// (Uniswap-V3 math), value by real DexScreener prices like the V2 path.
+/// 9mm V3 concentrated positions: token amounts from 9mm's data API,
+/// valued by real DexScreener prices like the V2 path.
 async function fetchPulse9mmV3(address) {
-  const q = `{positions(where:{owner:"${address.toLowerCase()}", liquidity_gt:"0"}, first:100){liquidity tickLower tickUpper pool{tick sqrtPrice token0{id symbol decimals} token1{id symbol decimals}}}}`;
   try {
-    const r = await (await fetch('https://info-api.9mm.pro/subgraphs/name/pulsechain/9mm-v3', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q})})).json();
-    const positions = r.data?.positions || [];
+    // Open positions, paged (the route also returns closed ones). amount0/amount1
+    // are already in whole tokens; symbols come from the pools.
+    const positions = [];
+    let cursor = null;
+    for (let page = 0; page < 50; page++) {
+      const r = await fetch(`${NINEMM_API}/accounts/${address.toLowerCase()}/positions?limit=200${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`);
+      if (!r.ok) throw new Error('9mm positions HTTP ' + r.status);
+      const j = await r.json();
+      positions.push(...(j.data?.v3 || []).filter(p => p.liquidity !== '0'));
+      if (!j.nextCursor) break;
+      cursor = j.nextCursor;
+    }
     if (!positions.length) return [];
+    const pools = {};
+    for (const p of await nineMmPools([...new Set(positions.map(p => p.pool))])) pools[p.address.toLowerCase()] = p;
     const under = new Set();
-    for (const p of positions) { under.add(p.pool.token0.id); under.add(p.pool.token1.id); }
+    for (const p of positions) { under.add(p.token0); under.add(p.token1); }
     const prices = await fetchPrices('pulsechain', [...under]);
     const priceOf = a => { const p = prices[a.toLowerCase()]; return (p && p.liquidity >= MIN_LIQ_USD) ? p.price : 0; };
     const h24Of = a => { const p = prices[a.toLowerCase()]; return (p && p.liquidity >= MIN_LIQ_USD) ? (p.h24 || 0) : 0; };
-    const sq = t => Math.pow(1.0001, t / 2);
     const out = [];
     for (const p of positions) {
-      const L = Number(p.liquidity), tick = Number(p.pool.tick), sqrtC = Number(p.pool.sqrtPrice) / 2 ** 96;
-      const sqrtL = sq(p.tickLower), sqrtU = sq(p.tickUpper);
-      let a0 = 0, a1 = 0;
-      if (tick < p.tickLower) a0 = L * (1 / sqrtL - 1 / sqrtU);
-      else if (tick >= p.tickUpper) a1 = L * (sqrtU - sqrtL);
-      else { a0 = L * (1 / sqrtC - 1 / sqrtU); a1 = L * (sqrtC - sqrtL); }
-      const amt0 = a0 / 10 ** p.pool.token0.decimals, amt1 = a1 / 10 ** p.pool.token1.decimals;
-      const v0 = amt0 * priceOf(p.pool.token0.id), v1 = amt1 * priceOf(p.pool.token1.id);
+      const pool = pools[p.pool.toLowerCase()];
+      const amt0 = parseFloat(p.amount0) || 0, amt1 = parseFloat(p.amount1) || 0;
+      const v0 = amt0 * priceOf(p.token0), v1 = amt1 * priceOf(p.token1);
       const value = v0 + v1;
       if (!isFinite(value) || value < DUST_USD) continue;
-      const h24 = value > 0 ? (v0 * h24Of(p.pool.token0.id) + v1 * h24Of(p.pool.token1.id)) / value : 0;
-      out.push({ chain: 'pulsechain', dex: '9mm V3', pairName: `${p.pool.token0.symbol}/${p.pool.token1.symbol}`, value, h24 });
+      const h24 = value > 0 ? (v0 * h24Of(p.token0) + v1 * h24Of(p.token1)) / value : 0;
+      const pairName = pool ? `${pool.token0.symbol}/${pool.token1.symbol}` : '9mm V3';
+      out.push({ chain: 'pulsechain', dex: '9mm V3', pairName, value, h24 });
     }
     return out;
   } catch(e) { console.error('9mm V3', e); return []; }

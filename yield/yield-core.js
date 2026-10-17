@@ -58,7 +58,9 @@
     // PulseChain aliases kept for callers written before multi-chain.
     chainId: 369,
     chainHex: '0x171',
-    subgraph: 'https://info-api.9mm.pro/subgraphs/name/pulsechain/9mm-v3',
+    // 9mm's REST data API. Its GraphQL subgraphs (info-api.9mm.pro) stopped on
+    // 19 October 2026; there is no GraphQL here, one route per question.
+    nineMmApi: 'https://data.9mm.pro/v1/chains/369',
     // LibertySwap's Goldsky subgraph needs a key, so it goes through our Worker.
     lbsProxy: 'https://pnj.chingching.xyz',
     switchSubgraph: 'https://api.goldsky.com/api/public/project_cme16kgb0ib7s01unc3juduwk/subgraphs/analytics/v2.2.0/gn',
@@ -128,6 +130,9 @@
   // Event topics, from `cast keccak`.
   const TOPIC = {
     collect: '0x40d0efd1a53d60ecbf40971b9daf7dc90178c3aadc7aab1765632738fa8b8f01', // Collect(uint256,address,uint256,uint256)
+    increase: '0x3067048beee31b25b2f1681f88dac838c8bba36af25bfb2b7cf7473a5847e35f', // IncreaseLiquidity(uint256,uint128,uint256,uint256)
+    decrease: '0x26f6a048ee9138f2c0ce266f322cb99228e8d619ae2bff30c67f8dcf9d2377b4', // DecreaseLiquidity(uint256,uint128,uint256,uint256)
+    transfer: '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef', // Transfer(address,address,uint256)
   };
 
   const MAX128 = (1n << 128n) - 1n;
@@ -298,7 +303,7 @@
   const ethCall = (to, data, from, rpcs) =>
     rpcCall('eth_call', [from ? { from, to, data } : { to, data }, 'latest'], rpcs);
 
-  async function gql(query, url = CFG.subgraph) {
+  async function gql(query, url) {
     const res = await fetchT(url, {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }),
     }, 25000);
@@ -310,70 +315,149 @@
   }
 
   // ---------- reads ----------
-  // No nested poolDayData here: the 9mm endpoint answers "Unexpected error." to
-  // a positions query with per-position day data once a wallet holds ~30+
-  // positions. Day data comes from one flat poolDayDatas query instead.
-  const POSITION_FIELDS = `
-    id owner liquidity tickLower tickUpper
-    pool { id feeTier tick sqrtPrice liquidity
-      token0 { id symbol decimals derivedUSD }
-      token1 { id symbol decimals derivedUSD }
-    }`;
-
-  // One row per block in which a position changed (add, remove, collect) or
-  // changed hands, with the running totals in whole tokens at that point.
+  // Running totals in whole tokens, as the snapshot rows carry them.
   const TOTAL_FIELDS = 'depositedToken0 depositedToken1 withdrawnToken0 withdrawnToken1 collectedFeesToken0 collectedFeesToken1';
   const SNAPSHOT_FIELDS = 'owner blockNumber timestamp liquidity ' + TOTAL_FIELDS;
 
-  /**
-   * The two newest poolDayData rows per pool from the last week, newest first,
-   * which is what the app's nested `poolDayData(first: 2)` returns.
-   */
-  async function fetchPoolDays(poolIds) {
-    const ids = [...new Set(poolIds.map((x) => x.toLowerCase()))].filter(isAddress);
-    const since = Math.floor(Date.now() / 86400000) * 86400 - 7 * 86400;
-    const byPool = {};
-    for (let i = 0; i < ids.length; i += 100) {
-      const chunk = ids.slice(i, i + 100);
-      const d = await gql(`{poolDayDatas(first: 1000, orderBy: date, orderDirection: desc,
-        where: { pool_in: [${chunk.map((x) => `"${x}"`).join(',')}], date_gte: ${since} }) { date feesUSD tvlUSD pool { id } }}`);
-      for (const row of d.poolDayDatas) {
-        const k = row.pool.id.toLowerCase();
-        (byPool[k] = byPool[k] || []).push(row);
-      }
+  /** GET one 9mm data API route; throws with the API's error code. */
+  async function nineMm(path) {
+    const res = await fetchT(CFG.nineMmApi + path, { method: 'GET' }, 25000);
+    if (!res.ok) {
+      let code = 'HTTP ' + res.status;
+      try { code = (await res.json()).error.code || code; } catch (_) { /* keep the status */ }
+      throw new Error('9mm ' + code);
     }
-    for (const k of Object.keys(byPool)) byPool[k] = byPool[k].sort((a, b) => b.date - a.date).slice(0, 2);
-    return byPool;
+    return res.json();
+  }
+
+  /** 9mm pools by lowercased address, 90 a request (the API's URL limit). */
+  async function nineMmPools(addrs) {
+    const ids = [...new Set(addrs.map((x) => x.toLowerCase()))].filter(isAddress);
+    const out = {};
+    for (let i = 0; i < ids.length; i += 90) {
+      const j = await nineMm('/pools?addresses=' + ids.slice(i, i + 90).join(','));
+      for (const p of j.data || []) out[p.address.toLowerCase()] = p;
+    }
+    return out;
+  }
+
+  const usdOf = (field) => (field && field.value != null ? field.value : null);
+
+  /**
+   * 9mm: every open position for the given owners from 9mm's data API (the
+   * accounts route pages with a cursor and includes closed positions, which
+   * are dropped), joined to their pools and reshaped into the subgraph field
+   * names the rest of the page reads.
+   *
+   * Day data: the API has no per-day rows, so its 7-day LP fees (after the
+   * protocol's share) over 7 stand in for "the last complete day" in both rows.
+   * Its own USD prices cover only tokens with a deep 9mm route; the rest stay
+   * "0" and fillMissingPrices prices them from DexScreener.
+   */
+  async function fetch9mm(owners) {
+    const raw = [];
+    await Promise.all(owners.map(async (owner) => {
+      let cursor = null;
+      for (let page = 0; page < 50; page++) {
+        const j = await nineMm(`/accounts/${owner}/positions?limit=200${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`);
+        for (const p of (j.data && j.data.v3) || []) if (p.liquidity !== '0') raw.push(p);
+        if (!j.nextCursor) break;
+        cursor = j.nextCursor;
+      }
+    }));
+    const wpls = CHAINS.pulsechain.wrapped;
+    const [pools, priceJ] = await Promise.all([
+      raw.length ? nineMmPools(raw.map((p) => p.pool)) : {},
+      nineMm('/prices?tokens=' + wpls).catch(() => null),
+    ]);
+    const plsUsd = num(priceJ && priceJ.data && priceJ.data[wpls] && priceJ.data[wpls].priceUsd);
+    const token = (t) => ({ id: t.address.toLowerCase(), symbol: t.symbol, decimals: t.decimals,
+      derivedUSD: usdOf(t.priceUsd) || '0' });
+    const today = Math.floor(Date.now() / 86400000) * 86400;
+    const all = [];
+    for (const p of raw) {
+      const pool = pools[p.pool.toLowerCase()];
+      if (!pool || pool.sqrtPriceX96 == null) continue;
+      const fees7 = usdOf(pool.lpFeesUsd7d), tvl = usdOf(pool.tvlUsd);
+      const day = fees7 != null && tvl != null ? { feesUSD: String(num(fees7) / 7), tvlUSD: tvl } : null;
+      all.push({
+        id: p.tokenId, owner: p.owner, liquidity: p.liquidity, tickLower: p.tickLower, tickUpper: p.tickUpper,
+        depositedToken0: p.deposited0, depositedToken1: p.deposited1,
+        withdrawnToken0: p.withdrawn0, withdrawnToken1: p.withdrawn1,
+        collectedFeesToken0: p.collected0, collectedFeesToken1: p.collected1,
+        pool: { id: pool.address.toLowerCase(), feeTier: pool.feeTier, tick: pool.tick, sqrtPrice: pool.sqrtPriceX96,
+          liquidity: pool.liquidity, token0: token(pool.token0), token1: token(pool.token1),
+          poolDayData: day ? [{ date: today, ...day }, { date: today - 86400, ...day }] : [] },
+      });
+    }
+    await attachHistory(all, owners, '9mm', nineMmHistory).catch(() => { /* no history: IL shows as unknown */ });
+    return { positions: all, plsUsd };
   }
 
   /**
-   * 9mm: every open position for the given owners, paged with id_gt because
-   * the endpoint silently caps unpaged queries (see the subgraph pagination
-   * lesson), with each pool's recent day data attached as pool.poolDayData.
+   * 9mm position history, rebuilt from the position manager's own events now
+   * that the subgraph's positionSnapshots are gone: IncreaseLiquidity,
+   * DecreaseLiquidity and Collect (tokenId is topic 1) and the NFT's Transfer
+   * (tokenId is topic 3), 50 positions per eth_getLogs, straight to the RPC.
+   * One snapshot per block in which a position changed or changed hands, with
+   * running totals in whole tokens, which is what the subgraph returned:
+   * withdrawn is DecreaseLiquidity's amounts and collected is Collect's, which
+   * counts withdrawn principal too (positionHistory allows for that on 9mm).
+   * Timestamps are read only for blocks where an owner changes, the only
+   * places a tenure can start.
    */
-  async function fetch9mm(owners) {
-    const ownersArg = owners.map((o) => `"${o}"`).join(',');
-    const all = [];
-    let last = null, plsUsd = 0;
-    for (let page = 0; page < 20; page++) {
-      const idFilter = last ? `, id_gt: "${last}"` : '';
-      const q = `{
-        bundles(first: 1) { ethPriceUSD }
-        positions(first: 1000, orderBy: id, orderDirection: asc,
-          where: { owner_in: [${ownersArg}], liquidity_gt: "0"${idFilter} }) { ${POSITION_FIELDS} ${TOTAL_FIELDS} }
-      }`;
-      const d = await gql(q);
-      if (d.bundles && d.bundles[0]) plsUsd = Number(d.bundles[0].ethPriceUSD) || plsUsd;
-      all.push(...d.positions);
-      if (d.positions.length < 1000) break;
-      last = d.positions[d.positions.length - 1].id;
+  async function nineMmHistory(positions) {
+    const nfpm = DEXES['9mm'].nfpm, rpcs = CHAINS.pulsechain.logRpcs;
+    const byId = new Map(positions.map((p) => [String(p.id), p]));
+    const ids = [...byId.keys()];
+    const events = {};
+    const add = (id, e) => (events[id] = events[id] || []).push(e);
+    for (let i = 0; i < ids.length; i += 50) {
+      const topicIds = ids.slice(i, i + 50).map((id) => '0x' + word(id));
+      const range = { address: nfpm, fromBlock: '0x0', toBlock: 'latest' };
+      const [liq, moves] = await Promise.all([
+        rpcCall('eth_getLogs', [{ ...range, topics: [[TOPIC.increase, TOPIC.decrease, TOPIC.collect], topicIds] }], rpcs),
+        rpcCall('eth_getLogs', [{ ...range, topics: [TOPIC.transfer, null, null, topicIds] }], rpcs),
+      ]);
+      for (const l of liq || []) {
+        const w = wordsOf(l.data);
+        const kind = l.topics[0] === TOPIC.increase ? 'inc' : l.topics[0] === TOPIC.decrease ? 'dec' : 'col';
+        add(BigInt(l.topics[1]).toString(), { block: parseInt(l.blockNumber, 16), idx: parseInt(l.logIndex, 16),
+          kind, L: kind === 'col' ? 0n : w[0], a0: w[1], a1: w[2] });
+      }
+      for (const l of moves || []) {
+        add(BigInt(l.topics[3]).toString(), { block: parseInt(l.blockNumber, 16), idx: parseInt(l.logIndex, 16),
+          kind: 'xfer', to: '0x' + l.topics[2].slice(26).toLowerCase() });
+      }
     }
-    const [days] = await Promise.all([
-      all.length ? fetchPoolDays(all.map((p) => p.pool.id)) : {},
-      attachHistory(all, owners).catch(() => { /* no history: IL shows as unknown */ }),
-    ]);
-    for (const p of all) p.pool.poolDayData = days[p.pool.id.toLowerCase()] || [];
-    return { positions: all, plsUsd };
+    const out = {}, stampBlocks = new Set();
+    for (const id of ids) {
+      const p = byId.get(id), d0 = num(p.pool.token0.decimals), d1 = num(p.pool.token1.decimals);
+      const list = (events[id] || []).sort((a, b) => a.block - b.block || a.idx - b.idx);
+      const snaps = [];
+      let owner = null, L = 0n, dep0 = 0n, dep1 = 0n, wd0 = 0n, wd1 = 0n, col0 = 0n, col1 = 0n;
+      for (let k = 0; k < list.length; k++) {
+        const e = list[k];
+        if (e.kind === 'xfer') owner = e.to;
+        else if (e.kind === 'inc') { L += e.L; dep0 += e.a0; dep1 += e.a1; }
+        else if (e.kind === 'dec') { L -= e.L; wd0 += e.a0; wd1 += e.a1; }
+        else { col0 += e.a0; col1 += e.a1; }
+        if (k + 1 < list.length && list[k + 1].block === e.block) continue; // one row per block
+        const prevOwner = snaps.length ? snaps[snaps.length - 1].owner : null;
+        if (owner !== prevOwner) stampBlocks.add(e.block);
+        snaps.push({ owner, blockNumber: String(e.block), timestamp: null, liquidity: L.toString(),
+          depositedToken0: toUnits(dep0, d0), depositedToken1: toUnits(dep1, d1),
+          withdrawnToken0: toUnits(wd0, d0), withdrawnToken1: toUnits(wd1, d1),
+          collectedFeesToken0: toUnits(col0, d0), collectedFeesToken1: toUnits(col1, d1) });
+      }
+      out[id] = snaps;
+    }
+    const blocks = [...stampBlocks];
+    const res = await rpcBatchChunked(blocks.map((b) => ({ method: 'eth_getBlockByNumber', params: ['0x' + b.toString(16), false] })));
+    const ts = {};
+    blocks.forEach((b, i) => { const r = res[i]; if (r && r.result && r.result.timestamp) ts[b] = parseInt(r.result.timestamp, 16); });
+    for (const id of ids) for (const s of out[id]) if (ts[s.blockNumber] != null) s.timestamp = String(ts[s.blockNumber]);
+    return out;
   }
 
   /**
@@ -382,7 +466,7 @@
    * aliases (128 positions, 1,633 snapshots: 2 s). A position with 1,000+
    * snapshots is paged on by block.
    */
-  async function fetchSnapshots(ids, url = CFG.subgraph) {
+  async function fetchSnapshots(ids, url) {
     const out = {};
     const one = (id, after) => `p${id}: positionSnapshots(first: 1000, orderBy: blockNumber, orderDirection: asc, `
       + `where: { position: "${id}"${after ? `, blockNumber_gt: "${after}"` : ''} }) { ${SNAPSHOT_FIELDS} }`;
@@ -443,7 +527,7 @@
    * it held at that moment: its liquidity then, at the pool price read from an
    * archive node at that block (the subgraph ignores block-pinned queries).
    */
-  async function attachHistory(positions, owners, dex = '9mm', source = CFG.subgraph) {
+  async function attachHistory(positions, owners, dex, source) {
     if (!positions.length) return;
     const tracked = new Set(owners.map((o) => o.toLowerCase()));
     const ids = positions.map((p) => String(p.id));
