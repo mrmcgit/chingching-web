@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <!-- This page signs transactions, so it loads no third-party code and talks to
-     nothing but the 9mm and Switch subgraphs, our LibertySwap Worker, DexScreener
+     nothing but 9mm's data API, the Switch subgraph, our LibertySwap Worker, DexScreener
      prices and PulseChain/Ethereum RPCs. Scripts are same-origin
      files only: an injected <script> or inline handler will not run. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src https://data.9mm.pro https://pnj.chingching.xyz https://api.goldsky.com https://rpc.pulsechain.com https://rpc-pulsechain.g4mm4.io https://pulsechain-rpc.publicnode.com https://ethereum-rpc.publicnode.com https://rpc.mevblocker.io https://eth-mainnet.public.blastapi.io https://eth.drpc.org https://api.dexscreener.com; base-uri 'none'; form-action 'none'">
@@ -304,7 +304,7 @@
     <div class="chips" id="chips"></div>
     <p class="privacy">
       <b>Your addresses stay in this browser.</b> They are saved in this browser's local storage only, never in the page link, and this page has no server, cookies or analytics.
-      To read balances your browser asks the public 9mm and Switch subgraphs, PulseChain and Ethereum RPC nodes and DexScreener (Ethereum prices) directly, so those services see the addresses or tokens being looked up, as they would for any wallet app.
+      To read balances your browser asks 9mm's public data API, the public Switch subgraph, PulseChain and Ethereum RPC nodes and DexScreener (Ethereum prices) directly, so those services see the addresses or tokens being looked up, as they would for any wallet app.
       LibertySwap's data needs a private key, so those lookups go through a Ching Ching relay on Cloudflare. It saves nothing, but Cloudflare's request logs for it show the address for a limited time.
     </p>
   </section>
@@ -353,7 +353,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=35"></script>
-<script src="app.js?v=34"></script>
+<script src="yield-core.js?v=36"></script>
+<script src="app.js?v=35"></script>
 </body>
 </html>

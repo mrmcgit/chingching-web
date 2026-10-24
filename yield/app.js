@@ -171,7 +171,7 @@
     if (state.notice) el.innerHTML = `<div class="banner info">${esc(state.notice)}</div>`;
     else if (state.error) el.innerHTML = `<div class="banner bad">Couldn't load positions: ${esc(state.error)}. Try Refresh.</div>`;
     else if (partial.length) {
-      el.innerHTML = `<div class="banner bad">${partial.map(([dex, msg]) => `Couldn't load ${esc(Y.DEXES[dex].label)} (${esc(msg)})`).join('; ')}. Other DEXes are shown; try Refresh.</div>`;
+      el.innerHTML = `<div class="banner bad">${partial.map(([dex, msg]) => `Couldn't load ${esc(Y.DEXES[dex].errorLabel || Y.DEXES[dex].label)} (${esc(msg)})`).join('; ')}. Other DEXes are shown; try Refresh.</div>`;
     } else el.innerHTML = '';
   }
 

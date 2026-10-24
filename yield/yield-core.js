@@ -99,7 +99,9 @@
     // factory, WETH9() is WETH. Read on-chain rather than from that subgraph:
     // it silently drops scalar tickLower/tickUpper (only { tickIdx } works)
     // and its 80 thin pools make derivedUSD untrustworthy.
-    '9mmeth': { label: '9mm', chain: 'ethereum', nfpm: '0x290a0376177a172911baba25f6c15e1748f4ae47',
+    // errorLabel: in the error banner, so an Ethereum RPC failure isn't read as
+    // 9mm's PulseChain API failing. Rows keep "9mm" with their chain badge.
+    '9mmeth': { label: '9mm', errorLabel: '9mm (Ethereum)', chain: 'ethereum', nfpm: '0x290a0376177a172911baba25f6c15e1748f4ae47',
       factory: '0xcc941d37297534696e963fb624b7593c33afdd7f' },
   };
 
@@ -319,9 +321,34 @@
   const TOTAL_FIELDS = 'depositedToken0 depositedToken1 withdrawnToken0 withdrawnToken1 collectedFeesToken0 collectedFeesToken1';
   const SNAPSHOT_FIELDS = 'owner blockNumber timestamp liquidity ' + TOTAL_FIELDS;
 
-  /** GET one 9mm data API route; throws with the API's error code. */
-  async function nineMm(path) {
-    const res = await fetchT(CFG.nineMmApi + path, { method: 'GET' }, 25000);
+  /** Seconds from a Retry-After header (delta or HTTP date), or null. */
+  function retryAfterSeconds(res) {
+    const v = res.headers.get('retry-after');
+    if (!v) return null;
+    if (/^\d+$/.test(v.trim())) return Number(v);
+    const at = Date.parse(v);
+    return Number.isFinite(at) ? Math.max(0, (at - Date.now()) / 1000) : null;
+  }
+
+  /**
+   * GET one 9mm data API route; throws with the API's error code. A timeout or
+   * a 503 (busy, still_computing: "retry after Retry-After seconds, the answer
+   * is usually ready by then") gets one retry, after Retry-After when the
+   * answer gives one (5 s if not, at most 15 s).
+   */
+  async function nineMm(path, attempt = 0) {
+    let res;
+    try {
+      res = await fetchT(CFG.nineMmApi + path, { method: 'GET' }, 25000);
+    } catch (e) {
+      if (attempt === 0 && /timed out/.test(e.message)) return nineMm(path, 1);
+      throw e;
+    }
+    if (res.status === 503 && attempt === 0) {
+      const wait = Math.min(15, retryAfterSeconds(res) ?? 5);
+      await new Promise((r) => setTimeout(r, wait * 1000));
+      return nineMm(path, 1);
+    }
     if (!res.ok) {
       let code = 'HTTP ' + res.status;
       try { code = (await res.json()).error.code || code; } catch (_) { /* keep the status */ }
