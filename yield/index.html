@@ -197,6 +197,8 @@
   .target-tag { font-size: 9px; font-weight: 800; color: #d4ccff; border: 1px solid rgba(138,122,237,0.6); border-radius: 5px; padding: 0 4px; margin-left: 6px; vertical-align: 2px; }
   .actions { display: flex; gap: 6px; justify-content: flex-end; }
   .actions .btn.primary { min-width: 108px; } /* room for "×N", so every row's buttons line up */
+  /* The table has ~26px to spare at full width: Send wraps under Collect rather than widening the column. */
+  .pos .actions { flex-wrap: wrap; max-width: 186px; margin-left: auto; }
   .status { grid-column: 1 / -1; font-size: 12px; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,0.04); color: var(--dim); }
   .status.ok { color: var(--up); background: rgba(52,199,89,0.08); }
   .status.bad { color: #ff7a70; background: rgba(255,59,48,0.08); }
@@ -223,6 +225,34 @@
   .topup input[type=range] { width: 100%; margin: 10px 0 2px; accent-color: var(--accent); }
   .topup-ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--dimmer); }
   .topup .kv { border-bottom: none; padding-bottom: 0; }
+  /* What goes into the position: big, and amber whenever the wallet pays part of it. */
+  .dep { padding: 14px; border: 1px solid var(--line2); border-radius: 14px; background: rgba(255,209,102,0.05); }
+  .dep-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+  .dep-badge { padding: 3px 8px; border-radius: 999px; background: var(--warn); color: #1a1205; font-size: 11px; font-weight: 800; letter-spacing: 0.02em; white-space: nowrap; }
+  .dep-total { font-size: 34px; font-weight: 800; color: var(--gold); letter-spacing: -0.5px; margin-top: 4px; line-height: 1.1; }
+  .dep-sub { font-size: 12px; color: var(--dim); margin-top: 2px; }
+  .dep-sub b { color: var(--text); }
+  .dep-tok { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 8px 0 0; }
+  .dep-amt { font-size: 20px; font-weight: 800; }
+  .dep-amt .sym { font-size: 14px; color: var(--dim); font-weight: 700; margin-left: 4px; }
+  .dep-from { font-size: 11px; color: var(--dim); text-align: right; line-height: 1.4; }
+  .dep-from .w { color: var(--warn); font-weight: 700; }
+  .dep-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: rgba(255,255,255,0.06); margin-top: 12px; }
+  .dep-bar .f { background: var(--gold); }
+  .dep-bar .w { background: var(--warn); background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.25) 0 4px, transparent 4px 8px); }
+  .dep-legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--dim); margin-top: 4px; }
+  .dep.wallet { border: 2px solid var(--warn); background: rgba(255,176,32,0.09); }
+  .dep.wallet .dep-sub b.w { color: var(--warn); }
+  /* Send position */
+  .send-in { width: 100%; margin-top: 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line2); background: #0f0f18; color: var(--text); font-size: 13px; }
+  .send-in.bad { border-color: rgba(255,59,48,0.6); }
+  .send-msg { font-size: 12px; margin-top: 6px; min-height: 18px; color: var(--dim); }
+  .send-msg.bad { color: #ff7a70; }
+  .send-msg.ok { color: var(--up); }
+  .send-to { font-size: 14px; font-weight: 700; word-break: break-all; padding: 10px 12px; margin-top: 6px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid var(--line2); }
+  .send-warn { margin-top: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid rgba(255,59,48,0.4); background: rgba(255,59,48,0.08); color: #ffb0a8; font-size: 13px; font-weight: 600; line-height: 1.45; }
+  .btn.danger { border: none; background: #d6453d; color: #fff; }
+  .btn.danger:hover { opacity: 0.9; }
   .modal-toggle { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .modal-toggle input { accent-color: var(--accent); width: 16px; height: 16px; }
   .settings-grid label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
@@ -248,6 +278,7 @@
     .td.span2 { grid-column: span 2; }
     .td.end { justify-self: end; text-align: right; }
     .actions { justify-content: flex-start; flex-wrap: wrap; }
+    .pos .actions { max-width: none; margin-left: 0; }
     .net-cell { align-items: flex-start; text-align: left; }
   }
   @media (max-width: 820px) {
@@ -353,7 +384,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=36"></script>
-<script src="app.js?v=35"></script>
+<script src="yield-core.js?v=37"></script>
+<script src="app.js?v=36"></script>
 </body>
 </html>

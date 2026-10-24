@@ -1,5 +1,5 @@
 /* LP Yield page: tracked wallets, claimable V3 fees on 9mm, LibertySwap and
- * Switch, and compounding.
+ * Switch, compounding, and sending a position to another address.
  * Maths, ABI and chain reads live in yield-core.js.
  */
 (function () {
@@ -168,7 +168,8 @@
   function renderBanner() {
     const el = $('banner');
     const partial = Object.entries(state.dexErrors || {});
-    if (state.notice) el.innerHTML = `<div class="banner info">${esc(state.notice)}</div>`;
+    if (state.noticeHtml) el.innerHTML = `<div class="banner info">${state.noticeHtml}</div>`; // built from escaped parts in runSend
+    else if (state.notice) el.innerHTML = `<div class="banner info">${esc(state.notice)}</div>`;
     else if (state.error) el.innerHTML = `<div class="banner bad">Couldn't load positions: ${esc(state.error)}. Try Refresh.</div>`;
     else if (partial.length) {
       el.innerHTML = `<div class="banner bad">${partial.map(([dex, msg]) => `Couldn't load ${esc(Y.DEXES[dex].errorLabel || Y.DEXES[dex].label)} (${esc(msg)})`).join('; ')}. Other DEXes are shown; try Refresh.</div>`;
@@ -412,6 +413,7 @@
         <div class="td wide"><div class="actions">
           <button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>
           <button class="btn small" type="button" data-act="collect" data-uid="${esc(p.uid)}" ${col.canCollect && !busy ? '' : 'disabled'} title="${esc(col.canCollect ? "Collect this position's fees to your wallet" : col.why)}">Collect</button>
+          <button class="btn small" type="button" data-act="send" data-uid="${esc(p.uid)}" ${isMine(p.owner) && !busy ? '' : 'disabled'} title="${isMine(p.owner) ? 'Send this position (its NFT) to another address' : 'Connect this wallet to send its positions'}">Send</button>
         </div></div>
         ${st ? `<div class="status ${st.kind || ''}">${st.html}</div>` : ''}
       </div>`;
@@ -829,7 +831,8 @@
           await Y.ethCall(g.nfpm, data, acct, rpcs);
           const used0 = Y.toUnits(r2.used0, d0), used1 = Y.toUnits(r2.used1, d1);
           summary.usedUsd = used0 * g.token0.usd + used1 * g.token1.usd;
-          fromWalletUsd = Math.max(0, summary.usedUsd - claimUsd);
+          // Per token, what went in beyond its fees: the confirm panel's split.
+          fromWalletUsd = Math.max(0, used0 - u0) * g.token0.usd + Math.max(0, used1 - u1) * g.token1.usd;
           summary.leftUsd = Math.max(0, claimUsd - summary.usedUsd);
         }
         // The checkbox on the confirm screen changes the transaction itself:
@@ -883,7 +886,6 @@
     ];
     if (mode === 'compound') {
       rows.push(['Adds to', `#${esc(s.t.id)} · ${feePct(s.t.feeTier)}${s.t.estApr == null ? '' : ` · est. ${fmtPct(s.t.estApr)} APR`}`]);
-      rows.push(['Added', `<span id="mAdded">${fmtAmt(s.used0)} ${sym0} + ${fmtAmt(s.used1)} ${sym1}<br>${fmtUsd(s.usedUsd)}</span>`]);
       rows.push(['Fees left in wallet', `<span id="mLeft">${fmtAmt(Math.max(0, s.left0))} ${sym0} + ${fmtAmt(Math.max(0, s.left1))} ${sym1}<br>${fmtUsd(s.leftUsd)}</span>`]);
     }
     rows.push(['Network', esc(g.chainName)]);
@@ -898,16 +900,42 @@
     const canTopUp = !!tu && tu.lMax > tu.lFees * 1.001;
     const nat = esc(Y.chainOf(g.chain).native);
     const units = (raw, dec) => Number(raw) / 10 ** dec;
+    const usd0 = g.token0.usd || 0, usd1 = g.token1.usd || 0;
+    /**
+     * The panel at the top: everything going into the position, per token and
+     * in total, split between the fees and the wallet. Amounts are token units;
+     * w0/w1 include native wrapped for that side (`wrap`, raw wei).
+     */
+    const deposit = ({ a0, a1, f0, f1, w0, w1, wrap = 0n, approx }) => {
+      const feesUsd = f0 * usd0 + f1 * usd1, walletUsd = w0 * usd0 + w1 * usd1, total = feesUsd + walletUsd;
+      const fromWallet = w0 > 0 || w1 > 0;
+      const from = (f, w, sym) => (!(f > 0 || w > 0) ? 'none at this range'
+        : !(w > 0) ? 'all from fees'
+          : `${fmtAmt(f)} from fees<br><span class="w">+ ${fmtAmt(w)} ${sym} from your wallet</span>`);
+      const fp = total > 0 ? Math.round((feesUsd / total) * 100) : 100;
+      return { wallet: fromWallet, html: `
+        <div class="dep-h"><span>Going into #${esc(s.t.id)}</span>${fromWallet ? `<span class="dep-badge">+ ${fmtUsd(walletUsd)} from your wallet</span>` : ''}</div>
+        <div class="dep-total">${approx ? '≈ ' : ''}${fmtUsd(total)}</div>
+        <div class="dep-sub">${fromWallet
+          ? `<b>${fmtUsd(feesUsd)}</b> of fees + <b class="w">${fmtUsd(walletUsd)}</b> from your wallet`
+          : 'All of it fees: nothing comes out of your wallet'}${usd0 > 0 && usd1 > 0 ? '' : ' · a token has no price, so the $ total leaves it out'}</div>
+        <div class="dep-tok"><span class="dep-amt">${fmtAmt(a0)}<span class="sym">${sym0}</span></span><span class="dep-from">${from(f0, w0, sym0)}</span></div>
+        <div class="dep-tok"><span class="dep-amt">${fmtAmt(a1)}<span class="sym">${sym1}</span></span><span class="dep-from">${from(f1, w1, sym1)}</span></div>
+        ${wrap > 0n ? `<div class="dep-from" style="text-align:left;margin-top:6px"><span class="w">Includes ${fmtAmt(Number(wrap) / 1e18)} ${nat} from your wallet, wrapped to W${nat} first</span></div>` : ''}
+        ${fromWallet && total > 0 ? `<div class="dep-bar" aria-hidden="true"><span class="f" style="width:${fp}%"></span><span class="w" style="width:${100 - fp}%"></span></div>
+          <div class="dep-legend"><span>Fees ${fp}%</span><span>Your wallet ${100 - fp}%</span></div>` : ''}` };
+    };
+    // Fees only, from the simulation: what the button sends as things stand.
+    const dep0 = mode === 'compound' ? deposit({ a0: s.used0, a1: s.used1, f0: s.used0, f1: s.used1, w0: 0, w1: 0, approx: false }) : null;
     // The preview at slider position t (0..1); the simulation after Confirm sets the real amounts.
     const preview = (t) => {
       const x = Y.topUpAt(tu, t);
-      const a0 = units(x.n0, g.token0.decimals), a1 = units(x.n1, g.token1.decimals);
-      const w0 = units(x.s0.fromWallet + x.s0.fromNative, g.token0.decimals), w1 = units(x.s1.fromWallet + x.s1.fromNative, g.token1.decimals);
-      const l0 = units(tu.fee0 - x.s0.fromFees, g.token0.decimals), l1 = units(tu.fee1 - x.s1.fromFees, g.token1.decimals);
+      const d0 = g.token0.decimals, d1 = g.token1.decimals;
+      const l0 = units(tu.fee0 - x.s0.fromFees, d0), l1 = units(tu.fee1 - x.s1.fromFees, d1);
       return {
-        added: `≈ ${fmtAmt(a0)} ${sym0} + ${fmtAmt(a1)} ${sym1}<br>${fmtUsd(a0 * g.token0.usd + a1 * g.token1.usd)}`,
-        wallet: `${fmtAmt(w0)} ${sym0} + ${fmtAmt(w1)} ${sym1}${x.wrap > 0n ? `<br><span style="color:var(--dim)">incl. ${fmtAmt(Number(x.wrap) / 1e18)} ${nat} wrapped first</span>` : ''}<br>${fmtUsd(w0 * g.token0.usd + w1 * g.token1.usd)}`,
-        left: `${fmtAmt(Math.max(0, l0))} ${sym0} + ${fmtAmt(Math.max(0, l1))} ${sym1}<br>${fmtUsd(Math.max(0, l0) * g.token0.usd + Math.max(0, l1) * g.token1.usd)}`,
+        dep: deposit({ a0: units(x.n0, d0), a1: units(x.n1, d1), f0: units(x.s0.fromFees, d0), f1: units(x.s1.fromFees, d1),
+          w0: units(x.s0.fromWallet + x.s0.fromNative, d0), w1: units(x.s1.fromWallet + x.s1.fromNative, d1), wrap: x.wrap, approx: true }),
+        left: `${fmtAmt(Math.max(0, l0))} ${sym0} + ${fmtAmt(Math.max(0, l1))} ${sym1}<br>${fmtUsd(Math.max(0, l0) * usd0 + Math.max(0, l1) * usd1)}`,
         wraps: x.wrap > 0n,
         // Wrapping spends native twice over: the amount, and the wrap's own gas.
         nativeAfter: d.native ? Number(d.native.after - (x.wrap > 0n ? x.wrap + tu.wrapCost : 0n)) / 1e18 : null,
@@ -918,15 +946,15 @@
         <div class="topup-h"><span>Add from your wallet too</span><span id="mPct">Fees only</span></div>
         <input type="range" id="mTop" min="0" max="1000" step="1" value="0" aria-label="How much to add from your wallet">
         <div class="topup-ends"><span>Fees only</span><span>Most that fits</span></div>
-        <div class="kv" id="mWalletRow" hidden><div class="k">From your wallet</div><div class="v" id="mWallet"></div></div>
       </div>`;
     const gasHeavy = d.gas && d.gas.usd && d.gas.usd > d.claimUsd * 0.2;
     return new Promise((resolve) => {
       const root = $('modalRoot');
       root.innerHTML = `<div class="modal-bg" id="mbg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mh">
         <h2 id="mh">${mode === 'compound' ? 'Compound' : 'Collect'} ${sym0} / ${sym1}</h2>
-        ${rows.map(([k, v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+        ${dep0 ? `<div class="dep" id="mDep" aria-live="polite">${dep0.html}</div>` : ''}
         ${slider}
+        ${rows.map(([k, v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
         ${mode === 'collect' && hasWrappedSide(g) ? `<label class="modal-toggle"><input type="checkbox" id="mUnwrap"${state.prefs.unwrapNative ? ' checked' : ''}>
           Receive W${esc(Y.chainOf(g.chain).native)} as ${esc(Y.chainOf(g.chain).native)}</label>` : ''}
         ${mode === 'compound' ? `<p class="note">One transaction collects the fees to your wallet and adds what fits the target's range. ${canTopUp ? `By default only the fees go in. Move the slider to add ${sym0} and ${sym1} from your wallet as well, up to what fits the range at today's price${tu.wrappedIndex >= 0 ? `, including ${nat} (wrapped to W${nat} in a separate transaction first)` : ''}. At least ${fmtAmt(Number(tu.reserve) / 1e18)} ${nat}, twice the cost of this compound, always stays in the wallet.` : `Only these fees are added; tokens already in your wallet are not used.`} Fees that don't fit stay in your wallet${leftShare > 0.25 ? `. <span id="mLop" style="color:var(--warn)">The fees are lopsided for this range, so a large share is left over${canTopUp ? '; the slider can use it up' : ''}.</span>` : '.'} Minimums are set ${(state.prefs.slippageBps / 100).toFixed(2)}% under the simulation.</p>` : `<p class="note">Fees go to your wallet; nothing is re-added.${hasWrappedSide(g) ? ` With the box ticked, the W${esc(Y.chainOf(g.chain).native)} arrives unwrapped as ${esc(Y.chainOf(g.chain).native)} in the same transaction; the other token is unchanged.` : ''}</p>`}
@@ -942,19 +970,19 @@
       };
       const range = $('mTop');
       if (range) {
-        const fresh = { added: $('mAdded').innerHTML, left: $('mLeft').innerHTML, native: $('mNative') ? $('mNative').textContent : '' };
+        const fresh = { left: $('mLeft').innerHTML, native: $('mNative') ? $('mNative').textContent : '' };
+        const showDep = (dep) => { $('mDep').innerHTML = dep.html; $('mDep').classList.toggle('wallet', dep.wallet); };
         range.addEventListener('input', () => {
           const t = Number(range.value) / 1000;
           if (t === 0) {
-            $('mAdded').innerHTML = fresh.added; $('mLeft').innerHTML = fresh.left;
+            showDep(dep0); $('mLeft').innerHTML = fresh.left;
             if ($('mNative')) $('mNative').textContent = fresh.native;
             if ($('mLop')) $('mLop').hidden = false;
-            $('mWalletRow').hidden = true; $('mPct').textContent = 'Fees only'; $('mYes').textContent = 'Confirm in wallet';
+            $('mPct').textContent = 'Fees only'; $('mYes').textContent = 'Confirm in wallet';
             return;
           }
           const v = preview(t);
-          $('mAdded').innerHTML = v.added; $('mLeft').innerHTML = v.left; $('mWallet').innerHTML = v.wallet;
-          $('mWalletRow').hidden = false;
+          showDep(v.dep); $('mLeft').innerHTML = v.left;
           if ($('mNative') && v.nativeAfter != null) $('mNative').textContent = fmtAmt(v.nativeAfter);
           if ($('mLop')) $('mLop').hidden = true;
           $('mPct').textContent = t === 1 ? 'Most that fits' : Math.round(t * 100) + '%';
@@ -982,6 +1010,151 @@
     for (const g of rows) await runGroup(g, 'compound', { skipConfirm: true });
     state.running = false;
     await refresh();
+  }
+
+  // ---------- send a position (the V3 NFT) to another address ----------
+  /**
+   * Check a typed destination for position p: { to, cs, warn } when it can
+   * go there, { error } when not. Mixed case must pass EIP-55; an address in
+   * one case carries no checksum, so it passes with a warning.
+   */
+  function checkDest(raw, p) {
+    const s = raw.trim();
+    if (!s) return { error: '' };
+    if (!Y.isAddress(s)) return { error: 'Not an address: it needs 0x followed by 40 hex characters.' };
+    const to = s.toLowerCase(), cs = Y.toChecksum(to), body = s.slice(2);
+    const mixed = body !== body.toLowerCase() && body !== body.toUpperCase();
+    if (mixed && s !== cs) return { error: "The checksum doesn't match, so a character is wrong. Copy the address again from where it came from." };
+    if (/^0x0{40}$/.test(to)) return { error: 'That is the zero address: the position would be lost for good.' };
+    if (to === p.nfpm) return { error: "That is this DEX's position manager: the position would be stuck in it." };
+    if (Object.values(Y.DEXES).some((d) => d.nfpm === to)) return { error: "That is a DEX's position manager, not a wallet." };
+    if (to === p.owner) return { error: 'That is the wallet that already holds it.' };
+    if (to === p.token0.address || to === p.token1.address || to === (p.poolId || '').toLowerCase()) return { error: "That is this pair's token or pool contract, not a wallet." };
+    return { to, cs, warn: mixed ? '' : 'This address is all one case, so it has no checksum to catch a typo: compare every character with where you copied it from.' };
+  }
+
+  /**
+   * Everything checked before a send can be signed: the connected wallet still
+   * owns the position, the exact transaction dry-runs (safeTransferFrom reverts
+   * on a contract that can't take ERC-721s), and the native reserve survives
+   * the gas. Throws with the reason; nothing has been sent at that point.
+   */
+  async function preflightSend(p, to) {
+    const chain = Y.chainOf(p.chain), rpcs = chain.rpcs, acct = state.account;
+    if (!acct || p.owner !== acct) throw new Error('Connect the wallet that holds this position.');
+    const [ownerHex, code] = await Promise.all([
+      Y.ethCall(p.nfpm, Y.SEL.ownerOf + Y.word(p.id), null, rpcs),
+      Y.rpcCall('eth_getCode', [to, 'latest'], rpcs),
+    ]);
+    const owner = '0x' + Y.wordsOf(ownerHex)[0].toString(16).padStart(40, '0');
+    if (owner !== acct) throw new Error(`The connected wallet no longer holds #${p.id}. Refresh the page.`);
+    // EIP-7702 wallets carry a 0xef0100… delegation as code but are still wallets.
+    const contract = !!code && code !== '0x' && !/^0xef0100/i.test(code);
+    const data = Y.buildSendData({ owner: acct, to, tokenId: p.id });
+    try {
+      await Y.ethCall(p.nfpm, data, acct, rpcs);
+    } catch (e) {
+      throw new Error(`The dry run failed, so nothing was sent (${Y.revertReason(e)}).${contract ? ' That address is a contract that probably cannot receive V3 positions.' : ''}`);
+    }
+    const gas = await gasQuote(p.nfpm, data, p.chain);
+    await checkNativeReserve(p.chain, p.nfpm, data);
+    return { data, gas, contract };
+  }
+
+  /** The address step, then the review step. Resolves { to } or null. */
+  function sendModal(p) {
+    const chain = Y.chainOf(p.chain);
+    const s0 = esc(p.token0.symbol), s1 = esc(p.token1.symbol);
+    const posLine = `${s0} / ${s1} #${esc(p.id)}<br><span style="color:var(--dim)">${esc(p.dexLabel)} · ${feePct(p.feeTier)} · ${esc(chain.name)}</span>`;
+    return new Promise((resolve) => {
+      const root = $('modalRoot');
+      const onKey = (e) => { if (e.key === 'Escape') close(null); };
+      const close = (v) => { root.innerHTML = ''; document.removeEventListener('keydown', onKey); resolve(v); };
+      document.addEventListener('keydown', onKey);
+      const frame = (inner) => {
+        root.innerHTML = `<div class="modal-bg" id="mbg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mh">${inner}</div></div>`;
+        $('mbg').onclick = (e) => { if (e.target.id === 'mbg') close(null); };
+      };
+      const ask = (value = '', failure = '') => {
+        frame(`<h2 id="mh">Send position</h2>
+          <div class="kv"><div class="k">Position</div><div class="v">${posLine}</div></div>
+          <div class="kv"><div class="k">Value</div><div class="v">${fmtUsd(p.value)}${p.claimUsd >= 0.01 ? `<br><span style="color:var(--dim)">+ ${fmtUsd(p.claimUsd)} unclaimed fees</span>` : ''}</div></div>
+          <label for="sTo" class="note" style="display:block;color:var(--text);font-weight:600">Send to (an address on ${esc(chain.name)})</label>
+          <input id="sTo" class="send-in mono" type="text" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="0x…" value="${esc(value)}">
+          <div class="send-msg" id="sMsg" aria-live="polite"></div>
+          <p class="note">Moves the position NFT itself, with its liquidity and any unclaimed fees, to that address. Nothing is swapped or withdrawn.</p>
+          <div class="modal-actions"><button class="btn" type="button" id="mNo">Cancel</button><button class="btn primary" type="button" id="mYes" disabled>Review</button></div>`);
+        const input = $('sTo'), msg = $('sMsg'), yes = $('mYes');
+        const validate = () => {
+          const r = checkDest(input.value, p);
+          input.classList.toggle('bad', !!r.error);
+          msg.className = 'send-msg' + (r.error ? ' bad' : r.to && !r.warn ? ' ok' : '');
+          msg.textContent = r.error || (r.to ? (r.warn || 'Valid address, checksum matches.') + (walletIndex(r.to) >= 0 ? ` Tracked here as ${walletName(r.to)}.` : '') : '');
+          yes.disabled = !r.to;
+          return r;
+        };
+        input.addEventListener('input', validate);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !yes.disabled) yes.click(); });
+        if (value) validate();
+        if (failure) { msg.className = 'send-msg bad'; msg.textContent = failure; }
+        $('mNo').onclick = () => close(null);
+        yes.onclick = async () => {
+          const r = validate();
+          if (!r.to) return;
+          yes.disabled = true; input.disabled = true; yes.textContent = 'Checking…';
+          try { review(input.value.trim(), r, await preflightSend(p, r.to)); } catch (e) { ask(input.value, e.message || String(e)); }
+        };
+        input.focus();
+      };
+      const review = (typed, r, chk) => {
+        frame(`<h2 id="mh">Send ${s0} / ${s1} #${esc(p.id)}?</h2>
+          <div class="kv"><div class="k">Position</div><div class="v">${posLine}</div></div>
+          <div class="kv"><div class="k">Holds</div><div class="v">${fmtAmt(p.amt0)} ${s0} + ${fmtAmt(p.amt1)} ${s1}<br>${fmtUsd(p.value)}</div></div>
+          <div class="kv"><div class="k">Unclaimed fees, sent with it</div><div class="v">${fmtAmt(p.fee0)} ${s0} + ${fmtAmt(p.fee1)} ${s1}<br>${fmtUsd(p.claimUsd)}</div></div>
+          <div class="kv"><div class="k">From</div><div class="v">${esc(walletName(p.owner))}</div></div>
+          <div class="note" style="color:var(--text);font-weight:600">To</div>
+          <div class="send-to mono">${esc(r.cs)}</div>
+          ${walletIndex(r.to) >= 0 ? `<p class="note">Tracked on this page as <b>${esc(walletName(r.to))}</b>.</p>` : ''}
+          ${r.warn ? `<p class="note warn">${esc(r.warn)}</p>` : ''}
+          ${chk.contract ? '<p class="note warn">This address is a contract, not a plain wallet. It accepted the position in the dry run, but only send if you know who controls it (a Safe multisig, for example).</p>' : ''}
+          <div class="kv"><div class="k">Network fee</div><div class="v">${chk.gas ? `≈ ${fmtAmt(chk.gas.native)} ${esc(chk.gas.symbol)}${chk.gas.usd ? ` (${fmtUsd(chk.gas.usd)})` : ''}` : 'Your wallet will show it'}</div></div>
+          <div class="send-warn">This cannot be undone. The position and its unclaimed fees will belong to the address above, and only whoever controls that address can send them back.</div>
+          <label class="modal-toggle"><input type="checkbox" id="sOk"> I've checked the address character by character</label>
+          <div class="modal-actions"><button class="btn" type="button" id="mBack">Back</button><button class="btn danger" type="button" id="mYes" disabled>Send position</button></div>`);
+        $('sOk').onchange = (e) => { $('mYes').disabled = !e.target.checked; };
+        $('mBack').onclick = () => ask(typed);
+        $('mYes').onclick = () => close({ to: r.to });
+      };
+      ask();
+    });
+  }
+
+  async function runSend(p, to) {
+    const key = p.uid, chain = Y.chainOf(p.chain);
+    try {
+      if (state.chainId !== chain.id) {
+        setStatus(key, `Switch your wallet to ${esc(chain.name)}…`);
+        await switchChain(p.chain);
+        renderConnect();
+      }
+      // Again just before signing: the review may have sat open a while.
+      setStatus(key, 'Checking…');
+      const { data } = await preflightSend(p, to);
+      setStatus(key, 'Confirm the transfer in your wallet…');
+      const hash = await sendTx(data, p.nfpm);
+      setStatus(key, `Sending ${txLink(hash, p.chain)}…`);
+      const rc = await waitReceipt(hash, chain.rpcs);
+      if (rc.status !== '0x1') throw new Error('Transaction reverted ' + hash);
+      // The row leaves the list on the refresh that follows, so say it up top
+      // too; it stays on the row while the 9mm data lags the chain.
+      const sent = `Sent ${esc(p.token0.symbol)} / ${esc(p.token1.symbol)} #${esc(p.id)} to <span class="mono">${esc(Y.toChecksum(to))}</span> ${txLink(hash, p.chain)}`;
+      state.noticeHtml = sent;
+      setStatus(key, sent, 'ok');
+      return true;
+    } catch (e) {
+      setStatus(key, esc(e && e.code === 4001 ? 'Rejected in wallet.' : (e.message || String(e))), 'bad');
+      return false;
+    }
   }
 
   function simpleConfirm(title, text) {
@@ -1112,6 +1285,15 @@
       const g = actionGroup(p, act);
       state.running = true; renderList();
       const ok = await runGroup(g, act);
+      state.running = false;
+      if (ok) await refresh(); else renderList();
+    } else if (act === 'send') {
+      const p = state.positions.find((x) => x.uid === el.dataset.uid);
+      if (!p || state.running) return;
+      const res = await sendModal(p);
+      if (!res) return;
+      state.running = true; renderList();
+      const ok = await runSend(p, res.to);
       state.running = false;
       if (ok) await refresh(); else renderList();
     } else if (act === 'compoundAll') {

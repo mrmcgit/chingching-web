@@ -128,6 +128,8 @@
     unwrapWNativeToken: '0x69bc35b2', // unwrapWNativeToken(uint256,address): Algebra (Switch)
     sweepToken: '0xdf2ab5bb',         // sweepToken(address,uint256,address)
     deposit: '0xd0e30db0',            // deposit(): wrap native into WPLS/WETH
+    ownerOf: '0x6352211e',            // ownerOf(uint256)
+    safeTransferFrom: '0x42842e0e',   // safeTransferFrom(address,address,uint256): send a position NFT
   };
   // Event topics, from `cast keccak`.
   const TOPIC = {
@@ -142,6 +144,68 @@
   const Q96 = 2 ** 96;
 
   const isAddress = (s) => /^0x[0-9a-fA-F]{40}$/.test(s);
+
+  // ---------- keccak-256 (EIP-55 checksums) ----------
+  // The page loads no third-party code, so a small Keccak-f[1600] on BigInt
+  // lanes: fine for a 40-character input. Round constants and rotation
+  // offsets are generated from the spec's LFSR and (x, y) walk rather than
+  // typed in; checked against `cast keccak` / `cast to-check-sum-address`.
+  const M64 = (1n << 64n) - 1n;
+  const KRC = [], KROT = new Array(25).fill(0n);
+  (function keccakTables() {
+    let R = 1;
+    const rcBit = () => { const b = R & 1; R <<= 1; if (R & 0x100) R ^= 0x171; return b; };
+    for (let i = 0; i < 24; i++) {
+      let rc = 0n;
+      for (let j = 0; j < 7; j++) if (rcBit()) rc |= 1n << BigInt((1 << j) - 1);
+      KRC.push(rc);
+    }
+    for (let t = 0, x = 1, y = 0; t < 24; t++) {
+      KROT[x + 5 * y] = BigInt((((t + 1) * (t + 2)) / 2) % 64);
+      [x, y] = [y, (2 * x + 3 * y) % 5];
+    }
+  })();
+  const rotl = (v, n) => (n === 0n ? v : ((v << n) | (v >> (64n - n))) & M64);
+  function keccakF(A) {
+    for (let round = 0; round < 24; round++) {
+      const C = [0, 1, 2, 3, 4].map((x) => A[x] ^ A[x + 5] ^ A[x + 10] ^ A[x + 15] ^ A[x + 20]);
+      for (let x = 0; x < 5; x++) {
+        const D = C[(x + 4) % 5] ^ rotl(C[(x + 1) % 5], 1n);
+        for (let y = 0; y < 25; y += 5) A[x + y] ^= D;
+      }
+      const B = new Array(25);
+      for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) B[y + 5 * ((2 * x + 3 * y) % 5)] = rotl(A[x + 5 * y], KROT[x + 5 * y]);
+      for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) A[x + 5 * y] = B[x + 5 * y] ^ (~B[(x + 1) % 5 + 5 * y] & M64 & B[(x + 2) % 5 + 5 * y]);
+      A[0] ^= KRC[round];
+    }
+  }
+  /** keccak256 of a byte array, as 64 hex characters. */
+  function keccak256(bytes) {
+    const rate = 136, A = new Array(25).fill(0n);
+    const msg = Array.from(bytes);
+    msg.push(0x01);
+    while (msg.length % rate) msg.push(0);
+    msg[msg.length - 1] |= 0x80;
+    for (let off = 0; off < msg.length; off += rate) {
+      for (let i = 0; i < rate / 8; i++) {
+        let lane = 0n;
+        for (let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(msg[off + i * 8 + b]);
+        A[i] ^= lane;
+      }
+      keccakF(A);
+    }
+    let out = '';
+    for (let i = 0; i < 4; i++) for (let b = 0; b < 8; b++) out += Number((A[i] >> BigInt(8 * b)) & 0xffn).toString(16).padStart(2, '0');
+    return out;
+  }
+  /** EIP-55 mixed-case form of a 0x address. */
+  function toChecksum(addr) {
+    const hex = strip(addr).toLowerCase();
+    const h = keccak256(new TextEncoder().encode(hex));
+    let out = '0x';
+    for (let i = 0; i < 40; i++) out += parseInt(h[i], 16) >= 8 ? hex[i].toUpperCase() : hex[i];
+    return out;
+  }
 
   // ---------- ABI ----------
   const strip = (h) => (h.startsWith('0x') ? h.slice(2) : h);
@@ -1336,6 +1400,13 @@
     return encMulticall(calls);
   }
 
+  /**
+   * Send a position NFT: safeTransferFrom(owner, to, tokenId) on its position
+   * manager. The "safe" variant reverts if `to` is a contract that does not
+   * accept ERC-721s, so the dry run catches a dead-end destination.
+   */
+  const buildSendData = ({ owner, to, tokenId }) => SEL.safeTransferFrom + addrWord(owner) + addrWord(to) + word(tokenId);
+
   /** increaseLiquidity's return, the last item of the multicall result. */
   function decodeIncreaseResult(multicallResult) {
     const items = decBytesArray(multicallResult);
@@ -1344,7 +1415,7 @@
   }
 
   const api = {
-    CFG, CHAINS, chainOf, DEXES, SEL, MAX128, MAX256, isAddress,
+    CFG, CHAINS, chainOf, DEXES, SEL, MAX128, MAX256, isAddress, keccak256, toChecksum, buildSendData,
     encCollect, encIncrease, encMulticall, decBytesArray, wordsOf, word, addrWord, revertReason,
     rpcBatch, rpcBatchChunked, rpcCall, ethCall, gql,
     fetchPositions, fetch9mm, fetchLbs, fetchSwitch, fetchUniswapV3, dexScreenerPrices, decodeSymbol, fetchFees, readAllowance, readPosition,

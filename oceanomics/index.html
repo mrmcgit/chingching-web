@@ -63,6 +63,16 @@ body {
 .sliderGroup label .end { font-size:10px; font-weight:800; letter-spacing:0.03em; color:rgba(240,246,250,0.75); }
 #periodLabel { font-size:11px; font-weight:900; letter-spacing:0.06em; color:#FFD166; opacity:1; }
 .sliderGroup input { width:108px; accent-color:#FFD166; }
+.sliderGroup.off { opacity:0.4; }   /* how many fish and the gainer mix mean nothing with cores only */
+.coresToggle {
+  display:flex; align-items:center; gap:6px; height:42px; padding:0 10px; border-radius:10px;
+  background:rgba(10,52,90,0.45); border:1px solid rgba(255,255,255,0.35);
+  backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px);
+  font-size:12px; font-weight:800; color:rgba(240,246,250,0.9);
+  cursor:pointer; white-space:nowrap;
+}
+.coresToggle input { width:15px; height:15px; accent-color:#FFD166; cursor:pointer; }
+.coresToggle:has(input:checked) { color:#FFD166; border-color:rgba(255,209,102,0.7); }
 .iconbtn {
   width:34px; height:34px; border:1px solid rgba(255,255,255,0.35); border-radius:10px;
   background:rgba(10,52,90,0.45); color:#F0F6FA; cursor:pointer; font-size:14px;
@@ -134,7 +144,11 @@ body {
 
 /* ---------- crabs and the turtle ---------- */
 #crab { position:absolute; bottom:8px; left:0; z-index:12; pointer-events:none; will-change:transform; }
-#sommi { position:absolute; bottom:6px; left:0; z-index:13; pointer-events:none; will-change:transform; }
+/* Sommi travels on `translate`, not `transform`: CSS applies `rotate` (his
+   waddle) before `transform`, so a translateX there was itself rotated ±5deg
+   and swung him up and down by x*sin(5deg), ~100px at the far side.
+   `translate` composes after the rotate. He rocks on his feet, not his middle. */
+#sommi { position:absolute; bottom:6px; left:0; z-index:13; pointer-events:none; will-change:translate, rotate; transform-origin:50% 100%; }
 #turtle { position:absolute; top:0; left:0; z-index:4; opacity:0.75; pointer-events:none; will-change:transform; }
 @media (prefers-reduced-motion: no-preference){
   @keyframes legswing { from { rotate:-14deg; } to { rotate:14deg; } }
@@ -220,6 +234,7 @@ body {
       <input id="speedSlider" type="range" min="40" max="160" step="10" value="100" aria-label="Swim speed">
       <label><span>&#128034;</span><span class="mid">&#10231;</span><span>&#9889;</span></label>
     </div>
+    <label class="coresToggle" title="Show only the cores: PLS, PLSX, INC, HEX, eHEX and PRVX"><input id="coresChk" type="checkbox">Cores only</label>
     <button id="refreshBtn" class="iconbtn" title="Refresh">&#8635;</button>
     <button id="snapBtn" class="iconbtn" title="Share a snapshot (PNG)">&#128247;</button>
     <button id="linkBtn" class="iconbtn" title="Share the link">&#128279;</button>
@@ -310,6 +325,17 @@ const SHARKS = new Set([
   '0x2fa878ab3f87cc1c9737fc071108f904c0b0c95d',   // INC
   '0xf6f8db0aba00007681f8faf16a0fda1c9b030b11',   // PRVX
 ]);
+// "Cores only": by contract, not symbol (copycat tokens reuse these symbols).
+// Addresses from the app's GlobalStrings (config.swift); WPLS shows as PLS.
+const CORES = new Set([
+  '0xa1077a294dde1b09bb078844df40758a5d0f9a27',   // PLS (WPLS)
+  '0x95b303987a60c71504d99aa1b13b4da07b0790ab',   // PLSX
+  '0x2fa878ab3f87cc1c9737fc071108f904c0b0c95d',   // INC
+  '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39',   // HEX
+  '0x57fde0a71132198bbec939b98976993d8d89d225',   // eHEX (HEX from Ethereum)
+  '0xf6f8db0aba00007681f8faf16a0fda1c9b030b11',   // PRVX
+]);
+let CORES_ONLY = false;
 // Fallback tank if the subgraph is down: the app's key tokens
 const BAKED = [
   '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39',
@@ -419,7 +445,10 @@ async function ensurePeriodData(){
 function pickMovers(best){
   const seen = new Set();
   const clean = [];
-  for (const [addr, p] of best){
+  // Cores first, so a copycat with the same symbol never takes their place
+  // in the symbol de-dupe below.
+  const entries = [...best].sort((a, b)=> CORES.has(b[0]) - CORES.has(a[0]));
+  for (const [addr, p] of entries){
     const sym = (p.baseToken.symbol || '').trim();
     const name = (p.baseToken.name || '').trim();
     const symLower = sym.toLowerCase(), nameLower = name.toLowerCase();
@@ -437,6 +466,9 @@ function pickMovers(best){
       infoLogo: p.info && p.info.imageUrl || null,   // claimed pair artwork, free with the batch
     });
   }
+  // Just the six cores, whatever the count and mix sliders say; one with no
+  // data for the window still swims, labelled "—".
+  if (CORES_ONLY) return clean.filter(t => CORES.has(t.addr));
   // The majors patrol the tank no matter what the market did today (the app
   // force-refreshes its key tokens for the same reason). Movers fill the rest,
   // and GAIN_BIAS skews the mix from all-losers through balanced to all-gainers.
@@ -798,24 +830,27 @@ setInterval(crabWalk, 300000);        // then exactly the app's cadence
    the bottom once on the hour, every hour. Blink and you miss him.
    ===================================================================== */
 const sommiEl = document.getElementById('sommi');
+let sommiHideT = null;
 function sommiDash(){
   if (document.hidden) return;
   const ltr = Math.random() < 0.5;
+  clearTimeout(sommiHideT);              // a dash that overlaps another must not be hidden mid-run
   sommiEl.hidden = false;
   sommiEl.classList.add('dashing');
   sommiEl.style.transition = 'none';
-  sommiEl.style.transform = `translateX(${ltr ? -110 : W+110}px)`;
+  sommiEl.style.translate = `${ltr ? -110 : W+110}px 0`;
   requestAnimationFrame(()=> requestAnimationFrame(()=>{
-    sommiEl.style.transition = 'transform 1.8s linear';
-    sommiEl.style.transform = `translateX(${ltr ? W+110 : -110}px)`;
+    sommiEl.style.transition = 'translate 1.8s linear';
+    sommiEl.style.translate = `${ltr ? W+110 : -110}px 0`;
   }));
-  setTimeout(()=>{ sommiEl.hidden = true; sommiEl.classList.remove('dashing'); }, 2200);
+  sommiHideT = setTimeout(()=>{ sommiEl.hidden = true; sommiEl.classList.remove('dashing'); }, 2200);
 }
 function scheduleSommi(){
-  const now = new Date();
-  const next = new Date(now);
-  next.setHours(now.getHours() + 1, 0, 0, 0);
-  setTimeout(()=>{ sommiDash(); scheduleSommi(); }, next - now);
+  // The hour after a second from now: a timer that fires a few ms before the
+  // hour would otherwise pick that same hour again and restart him mid-dash.
+  const next = new Date(Date.now() + 1000);
+  next.setHours(next.getHours() + 1, 0, 0, 0);
+  setTimeout(()=>{ sommiDash(); scheduleSommi(); }, next - Date.now());
 }
 scheduleSommi();
 
@@ -875,7 +910,8 @@ async function load(){
   statusEl.hidden = false;
   statusEl.innerHTML = 'Filling the tank&hellip;';
   try {
-    const universe = await fetchUniverse();
+    // The cores always ride along (the fallback list lacks eHEX and PRVX).
+    const universe = [...new Set([...await fetchUniverse(), ...CORES])];
     lastBest = await fetchDexData(universe);
     histCache = {};                      // prices moved; day baselines must recompute
     await ensurePeriodData();
@@ -907,7 +943,20 @@ try {
     document.getElementById('periodSlider').value = idx;
     document.getElementById('periodLabel').textContent = ['1H','6H','24H','7D','30D','60D','90D'][idx];
   }
+  CORES_ONLY = saved.cores === true;
 } catch(e){}
+const coresChk = document.getElementById('coresChk');
+function showCoresOnly(){
+  coresChk.checked = CORES_ONLY;
+  for (const id of ['fishSlider', 'biasSlider']) document.getElementById(id).parentElement.classList.toggle('off', CORES_ONLY);
+}
+showCoresOnly();
+coresChk.addEventListener('change', ()=>{
+  CORES_ONLY = coresChk.checked;
+  showCoresOnly();
+  saveSliders();
+  if (lastBest) spawnFish(pickMovers(lastBest));
+});
 document.getElementById('refreshBtn').addEventListener('click', load);
 function saveSliders(){
   try {
@@ -917,6 +966,7 @@ function saveSliders(){
       speed: +document.getElementById('speedSlider').value,
       size: +document.getElementById('sizeSlider').value,
       period: PERIOD,
+      cores: CORES_ONLY,
     }));
   } catch(e){}
 }
