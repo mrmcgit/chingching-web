@@ -317,9 +317,11 @@ const DAY_PERIODS = { d7:7, d30:30, d60:60, d90:90 };
 let histCache = {};                    // period -> Map(addr -> pct), rebuilt on refresh
 const MIN_LIQUIDITY = 50;
 const SUSPICIOUS = ['claim', '.com', '.io', '.site', '.net', '.org', '.nf', 't.me', '.gd', '.page'];
-// The app's shark list: HEX, WPLS, PLSX, INC (PRVX rarely charts; kept anyway)
+// Sharks are the cores: the app's shark list (HEX, WPLS, PLSX, INC, PRVX)
+// plus eHEX, so every "Cores only" token is a shark.
 const SHARKS = new Set([
   '0x2b591e99afe9f32eaa6214f7b7629768c40eeb39',   // HEX
+  '0x57fde0a71132198bbec939b98976993d8d89d225',   // eHEX (HEX from Ethereum)
   '0xa1077a294dde1b09bb078844df40758a5d0f9a27',   // WPLS
   '0x95b303987a60c71504d99aa1b13b4da07b0790ab',   // PLSX
   '0x2fa878ab3f87cc1c9737fc071108f904c0b0c95d',   // INC
