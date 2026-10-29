@@ -13,9 +13,9 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<meta name="description" content="Claimable V3 LP fees on PulseChain (9mm, LibertySwap, Switch) and Ethereum (9mm, Uniswap), with one-click compounding">
+<meta name="description" content="Claimable V3 LP fees on PulseChain (9mm, LibertySwap, Switch) and Ethereum (Watergun, Uniswap), with one-click compounding">
 <meta property="og:title" content="Ching Ching LP Yield">
-<meta property="og:description" content="Claimable V3 LP fees on PulseChain (9mm, LibertySwap, Switch) and Ethereum (9mm, Uniswap), with one-click compounding">
+<meta property="og:description" content="Claimable V3 LP fees on PulseChain (9mm, LibertySwap, Switch) and Ethereum (Watergun, Uniswap), with one-click compounding">
 <link rel="canonical" href="https://chingching.xyz/yield/">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Ching Ching">
@@ -335,7 +335,7 @@
     <div class="chips" id="chips"></div>
     <p class="privacy">
       <b>Your addresses stay in this browser.</b> They are saved in this browser's local storage only, never in the page link, and this page has no server, cookies or analytics.
-      To read balances your browser asks 9mm's public data API, the public Switch subgraph, PulseChain and Ethereum RPC nodes and DexScreener (Ethereum prices) directly, so those services see the addresses or tokens being looked up, as they would for any wallet app.
+      To read balances your browser asks 9mm's public data API, the public Switch subgraph, PulseChain and Ethereum RPC nodes (Watergun and Uniswap positions are read straight from Ethereum) and DexScreener (Ethereum prices) directly, so those services see the addresses or tokens being looked up, as they would for any wallet app.
       LibertySwap's data needs a private key, so those lookups go through a Ching Ching relay on Cloudflare. It saves nothing, but Cloudflare's request logs for it show the address for a limited time.
     </p>
   </section>
@@ -370,6 +370,7 @@
           <option value="LibertySwap">LibertySwap</option>
           <option value="Switch">Switch</option>
           <option value="Uniswap V3">Uniswap V3</option>
+          <option value="Watergun">Watergun</option>
         </select>
       </label>
       <label class="ctl"><input type="checkbox" id="inRangeChk"> In range only</label>
@@ -384,7 +385,7 @@
 <!-- Bump ?v= on both scripts with every deploy: Pages caches for 10 minutes and
      a stale core under a new app.js (or the reverse) breaks the page. -->
 
-<script src="yield-core.js?v=37"></script>
-<script src="app.js?v=36"></script>
+<script src="yield-core.js?v=38"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

@@ -1349,8 +1349,9 @@
 
   // ---------- boot ----------
   if (state.prefs.wallet !== 'all' && walletIndex(state.prefs.wallet) < 0) state.prefs.wallet = 'all';
-  // The DEX filter matches by name ("9mm" spans both chains); older saved
-  // values were DEX keys, so anything that is not a current name resets.
+  // The DEX filter matches by name; older saved values were DEX keys, and
+  // "9mm" on Ethereum is now Watergun, so anything that is not a current name
+  // resets.
   if (state.prefs.dex !== 'all' && !Object.values(Y.DEXES).some((d) => d.label === state.prefs.dex)) state.prefs.dex = 'all';
   render();
   refresh();

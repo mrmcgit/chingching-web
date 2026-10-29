@@ -1,5 +1,5 @@
 /* LP Yield core: V3 position maths, ABI encoding and chain reads for 9mm,
- * LibertySwap and Switch on PulseChain, and Uniswap V3 on Ethereum.
+ * LibertySwap and Switch on PulseChain, and Uniswap V3 and Watergun on Ethereum.
  *
  * Adding a chain: an entry in CHAINS, a DEX in DEXES naming it, and a fetcher
  * in FETCHERS that returns rows in the 9mm subgraph shape (see fetchUniswapV3).
@@ -92,16 +92,16 @@
       feesOnly: true, poolState: 'globalState' },
     univ3: { label: 'Uniswap V3', chain: 'ethereum', nfpm: '0xc36442b4a4522e871399cd717abdd847ab11fe88',
       factory: '0x1f98431c8ad98523631ae4a59f267346ea31f984' },
-    // 9mm's Ethereum deployment (a PancakeSwap V3 fork, same interfaces as
-    // Uniswap for everything read here). Manager found as the owner of every
-    // mint in the ethereum/9mm-v3 subgraph, then verified on-chain 2026-09-25:
-    // name() "NineMM V3 Positions NFT-V1", factory() matches the subgraph's
-    // factory, WETH9() is WETH. Read on-chain rather than from that subgraph:
-    // it silently drops scalar tickLower/tickUpper (only { tickIdx } works)
-    // and its 80 thin pools make derivedUSD untrustworthy.
-    // errorLabel: in the error banner, so an Ethereum RPC failure isn't read as
-    // 9mm's PulseChain API failing. Rows keep "9mm" with their chain badge.
-    '9mmeth': { label: '9mm', errorLabel: '9mm (Ethereum)', chain: 'ethereum', nfpm: '0x290a0376177a172911baba25f6c15e1748f4ae47',
+    // Watergun: 9mm split in 2026-10, 9mm Pro kept PulseChain and every other
+    // chain became Watergun (docs.watergun.pro/developers/deployments lists
+    // this manager and factory for Ethereum). The contracts did not move. A
+    // PancakeSwap V3 fork, same interfaces as Uniswap for everything read here.
+    // Verified on-chain 2026-09-25 and again 2026-10-29: name() "NineMM V3
+    // Positions NFT-V1", factory() is the factory below, WETH9() is WETH. Read
+    // on-chain rather than from its subgraph: that one silently drops scalar
+    // tickLower/tickUpper (only { tickIdx } works) and its 80 thin pools make
+    // derivedUSD untrustworthy.
+    watergun: { label: 'Watergun', chain: 'ethereum', nfpm: '0x290a0376177a172911baba25f6c15e1748f4ae47',
       factory: '0xcc941d37297534696e963fb624b7593c33afdd7f' },
   };
 
@@ -810,7 +810,7 @@
     return out;
   }
 
-  // ---------- Uniswap-V3-style DEXes read on-chain (Uniswap V3 and 9mm on Ethereum) ----------
+  // ---------- Uniswap-V3-style DEXes read on-chain (Uniswap V3 and Watergun on Ethereum) ----------
   const toAddr = (w) => '0x' + w.toString(16).padStart(40, '0');
 
   /** ERC-20 symbol as a string, or as bytes32 for the old tokens (MKR). */
@@ -965,7 +965,7 @@
   const FETCHERS = {
     '9mm': fetch9mm, lbs: fetchLbs, switch: fetchSwitch,
     univ3: (owners, rpcs) => fetchUniswapV3(owners, rpcs, 'univ3'),
-    '9mmeth': (owners, rpcs) => fetchUniswapV3(owners, rpcs, '9mmeth'),
+    watergun: (owners, rpcs) => fetchUniswapV3(owners, rpcs, 'watergun'),
   };
 
   /**
