@@ -435,9 +435,7 @@
           ? (state.prefs.byPair && others > 0
             ? `Collect fees from all ${cg.positions.length} ${p.token0.symbol}/${p.token1.symbol} positions and add them to #${cg.target.id} (highest est. APR)`
             : state.prefs.byPair ? `Collect this position's fees and add them to #${cg.target.id}` : "Collect this position's fees and add them back into it")
-          : !add && state.prefs.byPair && cg.target && cg.target.uid !== p.uid && addOffer(cg.target)
-            ? `${chk.why}. Add from your wallet is on #${cg.target.id}, this pair's highest est. APR position; turn off Compound by pair to add to this one.`
-            : chk.why;
+          : chk.why;
         return `<div class="tr">
         <div class="td wide">
           <div class="pair">${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}${targets.has(p.uid) ? '<span class="target-tag" title="Highest est. APR of this pair in this wallet: compounding goes here">TARGET</span>' : ''}</div>
@@ -452,10 +450,9 @@
         <div class="td num" data-l="Net">${netCell(p)}</div>
         <div class="td num span2" data-l="Claimable">${claimCell(p)}</div>
         <div class="td wide"><div class="actions">
-          ${add
-            ? `<button class="btn small primary" type="button" data-act="add" data-uid="${esc(p.uid)}" ${busy ? 'disabled' : ''} title="${esc(addTip(add))}">Add</button>`
-            : `<button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>`}
+          <button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>
           <button class="btn small" type="button" data-act="collect" data-uid="${esc(p.uid)}" ${col.canCollect && !busy ? '' : 'disabled'} title="${esc(col.canCollect ? "Collect this position's fees to your wallet" : col.why)}">Collect</button>
+          ${add ? `<button class="btn small add" type="button" data-act="add" data-uid="${esc(p.uid)}" ${busy ? 'disabled' : ''} title="${esc(addTip(add))}">Add</button>` : ''}
           <button class="btn small" type="button" data-act="send" data-uid="${esc(p.uid)}" ${isMine(p.owner) && !busy ? '' : 'disabled'} title="${isMine(p.owner) ? 'Send this position (its NFT) to another address' : 'Connect this wallet to send its positions'}">Send</button>
         </div></div>
         ${st ? `<div class="status ${st.kind || ''}">${st.html}</div>` : ''}
@@ -521,21 +518,20 @@
   // Smallest Add worth offering, in dollars: below that the gas costs more than goes in.
   const MIN_ADD_USD = 1;
   /**
-   * Add: put the connected wallet's own tokens into a position. Offered in
-   * Compound's place where Compound has nothing to do (no fees on the pair,
-   * or on this position with by-pair off) and the wallet holds enough of the
-   * pair's tokens to fit the range at the most recent price (native counts for
-   * a WPLS/WETH side, above the reserve). With by-pair on it goes into the
-   * pair's target, so only that row offers it; with it off each position
-   * takes its own, out of range too (one token only). No swaps. Returns what
-   * the most that fits would be, or null.
+   * Add: put the connected wallet's own tokens into a position, its own
+   * button next to Compound whatever the fees (Gavin, 2026-10-31: offering it
+   * only with nothing to claim meant it never showed, since any swap earns
+   * fees). Offered when the wallet holds enough of the pair's tokens to fit
+   * the range at the most recent price (native counts for a WPLS/WETH side,
+   * above the reserve). Unclaimed fees stay where they are. With by-pair on it
+   * goes into the pair's target, so only that row offers it; with it off each
+   * position takes its own, out of range too (one token only). No swaps.
+   * Returns what the most that fits would be, or null.
    */
   function addOffer(p) {
     const acct = state.account, f = state.funds;
     if (!acct || p.owner !== acct || !f || f.account !== acct) return null;
-    const cg = actionGroup(p, 'compound');
-    if (cg.hasFeeError || cg.fee0 > 0 || cg.fee1 > 0) return null;
-    const target = state.prefs.byPair ? cg.target : p;
+    const target = state.prefs.byPair ? actionGroup(p, 'compound').target : p;
     if (!target || target.uid !== p.uid) return null;
     const c = f.byChain[p.chain];
     if (!c) return null;
@@ -556,7 +552,7 @@
 
   function addTip(a) {
     const p = a.target, nat = Y.chainOf(p.chain).native;
-    return `No fees to compound. Add up to ${fmtAmt(a.a0)} ${p.token0.symbol} + ${fmtAmt(a.a1)} ${p.token1.symbol}`
+    return `Add up to ${fmtAmt(a.a0)} ${p.token0.symbol} + ${fmtAmt(a.a1)} ${p.token1.symbol}`
       + `${a.usd == null ? '' : ` (${fmtUsd(a.usd)})`} from your wallet to #${p.id}`
       + `${a.wraps ? `, wrapping some ${nat} for the W${nat} side` : ''}. You choose how much on the next screen; nothing is swapped.`;
   }
@@ -1243,7 +1239,7 @@
         </div>
         ${rows.map(([k, v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
         ${single ? `<p class="note warn">#${esc(t.id)} is out of range, so it takes only ${single} and earns no fees until the price comes back into its range.</p>` : ''}
-        <p class="note">Adds ${sym0} and ${sym1} from your wallet to #${esc(t.id)}; there are no fees on this pair to compound. Nothing is swapped: the amounts are what fits the range at today's price, and the rest stays in your wallet.${tu.wrappedIndex >= 0 ? ` When the W${nat} you hold isn't enough, ${nat} is wrapped to W${nat} in a separate transaction first.` : ''} At least ${fmtAmt(Number(tu.reserve) / 1e18)} ${nat}, twice the cost of a compound, always stays in the wallet. A simulation after you confirm sets the exact amounts, with minimums ${(state.prefs.slippageBps / 100).toFixed(2)}% under it.</p>
+        <p class="note">Adds ${sym0} and ${sym1} from your wallet to #${esc(t.id)}. Its unclaimed fees are not touched (Compound or Collect does that). Nothing is swapped: the amounts are what fits the range at today's price, and the rest stays in your wallet.${tu.wrappedIndex >= 0 ? ` When the W${nat} you hold isn't enough, ${nat} is wrapped to W${nat} in a separate transaction first.` : ''} At least ${fmtAmt(Number(tu.reserve) / 1e18)} ${nat}, twice the cost of a compound, always stays in the wallet. A simulation after you confirm sets the exact amounts, with minimums ${(state.prefs.slippageBps / 100).toFixed(2)}% under it.</p>
         <div class="modal-actions"><button class="btn" type="button" id="mNo">Cancel</button><button class="btn primary" type="button" id="mYes">${v0.wraps ? 'Wrap, then confirm in wallet' : 'Confirm in wallet'}</button></div>
       </div></div>`;
       const range = $('mTop');
