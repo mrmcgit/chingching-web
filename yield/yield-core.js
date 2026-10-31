@@ -1187,7 +1187,7 @@
       id: String(p.id), dex: p.dex, dexLabel: DEXES[p.dex].label, nfpm: DEXES[p.dex].nfpm,
       chain: DEXES[p.dex].chain, chainName: chainOf(DEXES[p.dex].chain).name,
       uid: p.dex + ':' + p.id, owner: p.owner.toLowerCase(), poolId: pool.id,
-      feeTier: num(pool.feeTier), tick, tickLower: tl, tickUpper: tu, liquidity: p.liquidity,
+      feeTier: num(pool.feeTier), tick, sqrtPrice: String(pool.sqrtPrice), tickLower: tl, tickUpper: tu, liquidity: p.liquidity,
       token0: { address: t0.id.toLowerCase(), symbol: t0.symbol, decimals: d0, usd: p0 },
       token1: { address: t1.id.toLowerCase(), symbol: t1.symbol, decimals: d1, usd: p1 },
       amt0, amt1, value, inRange, poolApr, estApr,
@@ -1383,6 +1383,14 @@
   }
 
   /**
+   * Add the wallet's own tokens to one position: increaseLiquidity on its own,
+   * inside a multicall so decodeIncreaseResult reads the simulation the same
+   * way as a compound's.
+   */
+  const buildAddData = ({ targetId, amount0, amount1, min0 = 0n, min1 = 0n, deadline }) =>
+    buildCompoundData({ ids: [], targetId, amount0, amount1, min0, min1, deadline });
+
+  /**
    * Collect every position's fees to the owner. With `unwrap` ({ dex, other,
    * minWrapped, minOther }) the fees are collected into the position manager
    * instead, its wrapped-native balance is unwrapped to the owner as native
@@ -1421,7 +1429,7 @@
     fetchPositions, fetch9mm, fetchLbs, fetchSwitch, fetchUniswapV3, dexScreenerPrices, decodeSymbol, fetchFees, readAllowance, readPosition,
     encAggregate3, decAggregate3, multiRead,
     positionAmounts, poolDay, buildPosition, buildGroups, withSlippage, toUnits, tenureOf, positionHistory,
-    buildCompoundData, buildCollectData, decodeIncreaseResult, topUpPlan, topUpAt,
+    buildCompoundData, buildAddData, buildCollectData, decodeIncreaseResult, topUpPlan, topUpAt,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.YieldCore = api;

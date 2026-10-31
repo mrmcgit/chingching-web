@@ -1,5 +1,6 @@
 /* LP Yield page: tracked wallets, claimable V3 fees on 9mm, LibertySwap and
- * Switch, compounding, and sending a position to another address.
+ * Switch, compounding, adding the wallet's own tokens to a position, and
+ * sending a position to another address.
  * Maths, ABI and chain reads live in yield-core.js.
  */
 (function () {
@@ -28,6 +29,7 @@
     providers: [], provider: null, account: null, chainId: null, pickerOpen: false, netMenuOpen: false, switching: false,
     status: {}, // group key -> { text, kind }
     running: false,
+    funds: null, // connected wallet's balances of its pairs' tokens, for Add (loadFunds)
   };
   const savePrefs = () => store.set(K.prefs, state.prefs);
   const saveWallets = () => store.set(K.wallets, state.wallets);
@@ -111,6 +113,43 @@
     } finally {
       if (seq === state.seq) { state.loading = false; render(); }
     }
+    if (seq === state.seq) loadFunds();
+  }
+
+  /**
+   * The connected wallet's balances of every token in its own positions'
+   * pairs, plus native and the gas price, one RPC batch per chain. Only
+   * decides whether a row offers Add; the Add itself reads them again.
+   * Public RPC nodes, no Worker.
+   */
+  async function loadFunds() {
+    const acct = state.account;
+    const seq = (state.fundsSeq = (state.fundsSeq || 0) + 1);
+    if (!acct) { state.funds = null; return; }
+    const byChain = {};
+    for (const p of state.positions) {
+      if (p.owner !== acct) continue;
+      const c = byChain[p.chain] || (byChain[p.chain] = new Set());
+      c.add(p.token0.address); c.add(p.token1.address);
+    }
+    const out = { account: acct, byChain: {} };
+    await Promise.all(Object.entries(byChain).map(async ([key, set]) => {
+      const tokens = [...set];
+      const reqs = tokens.map((t) => ({ method: 'eth_call', params: [{ to: t, data: Y.SEL.balanceOf + Y.addrWord(acct) }, 'latest'] }));
+      reqs.push({ method: 'eth_getBalance', params: [acct, 'latest'] }, { method: 'eth_gasPrice', params: [] });
+      try {
+        const res = await Y.rpcBatch(reqs, Y.chainOf(key).rpcs);
+        const val = (r) => (r && !r.error && r.result && r.result !== '0x' ? BigInt(r.result.slice(0, 66)) : null);
+        const price = val(res[res.length - 1]), native = val(res[res.length - 2]);
+        if (price == null || native == null) return;
+        const bal = {};
+        tokens.forEach((t, i) => { const v = val(res[i]); if (v != null) bal[t] = v; });
+        out.byChain[key] = { tokens: bal, native, price };
+      } catch (_) { /* no Add buttons on this chain until the next refresh */ }
+    }));
+    if (seq !== state.fundsSeq || state.account !== acct) return;
+    state.funds = out;
+    renderList();
   }
 
   // ---------- filtering & sorting ----------
@@ -388,7 +427,7 @@
         ${th('Pair', 'pair')}${th('Wallet', 'wallet')}${th('Range', '')}${th('Value', 'value', 'num')}${th('Est. APR', 'apr', 'num')}${th('Pool APR', 'poolApr', 'num')}${th('Net', 'net', 'num')}${th('Claimable', 'claimable', 'num')}${th('', '', 'num')}
       </div></div>
       <div class="tbody">${rows.map((p) => {
-        const cg = actionGroup(p, 'compound'), chk = canCompound(cg);
+        const cg = actionGroup(p, 'compound'), chk = canCompound(cg), add = addOffer(p);
         const col = canCompound(actionGroup(p, 'collect'));
         const busy = state.running, st = state.status[p.uid];
         const others = cg.positions.length - 1;
@@ -396,7 +435,9 @@
           ? (state.prefs.byPair && others > 0
             ? `Collect fees from all ${cg.positions.length} ${p.token0.symbol}/${p.token1.symbol} positions and add them to #${cg.target.id} (highest est. APR)`
             : state.prefs.byPair ? `Collect this position's fees and add them to #${cg.target.id}` : "Collect this position's fees and add them back into it")
-          : chk.why;
+          : !add && state.prefs.byPair && cg.target && cg.target.uid !== p.uid && addOffer(cg.target)
+            ? `${chk.why}. Add from your wallet is on #${cg.target.id}, this pair's highest est. APR position; turn off Compound by pair to add to this one.`
+            : chk.why;
         return `<div class="tr">
         <div class="td wide">
           <div class="pair">${esc(p.token0.symbol)} / ${esc(p.token1.symbol)}${targets.has(p.uid) ? '<span class="target-tag" title="Highest est. APR of this pair in this wallet: compounding goes here">TARGET</span>' : ''}</div>
@@ -411,7 +452,9 @@
         <div class="td num" data-l="Net">${netCell(p)}</div>
         <div class="td num span2" data-l="Claimable">${claimCell(p)}</div>
         <div class="td wide"><div class="actions">
-          <button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>
+          ${add
+            ? `<button class="btn small primary" type="button" data-act="add" data-uid="${esc(p.uid)}" ${busy ? 'disabled' : ''} title="${esc(addTip(add))}">Add</button>`
+            : `<button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>`}
           <button class="btn small" type="button" data-act="collect" data-uid="${esc(p.uid)}" ${col.canCollect && !busy ? '' : 'disabled'} title="${esc(col.canCollect ? "Collect this position's fees to your wallet" : col.why)}">Collect</button>
           <button class="btn small" type="button" data-act="send" data-uid="${esc(p.uid)}" ${isMine(p.owner) && !busy ? '' : 'disabled'} title="${isMine(p.owner) ? 'Send this position (its NFT) to another address' : 'Connect this wallet to send its positions'}">Send</button>
         </div></div>
@@ -473,6 +516,49 @@
     if (!(g.fee0 > 0 || g.fee1 > 0)) return { ok: false, canCollect: false, why: 'Nothing to claim' };
     if (!g.target) return { ok: false, canCollect: true, why: 'No in-range position of this pair to compound into; turn off Compound by pair to compound a position into itself' };
     return { ok: true, canCollect: true };
+  }
+
+  // Smallest Add worth offering, in dollars: below that the gas costs more than goes in.
+  const MIN_ADD_USD = 1;
+  /**
+   * Add: put the connected wallet's own tokens into a position. Offered in
+   * Compound's place where Compound has nothing to do (no fees on the pair,
+   * or on this position with by-pair off) and the wallet holds enough of the
+   * pair's tokens to fit the range at the most recent price (native counts for
+   * a WPLS/WETH side, above the reserve). With by-pair on it goes into the
+   * pair's target, so only that row offers it; with it off each position
+   * takes its own, out of range too (one token only). No swaps. Returns what
+   * the most that fits would be, or null.
+   */
+  function addOffer(p) {
+    const acct = state.account, f = state.funds;
+    if (!acct || p.owner !== acct || !f || f.account !== acct) return null;
+    const cg = actionGroup(p, 'compound');
+    if (cg.hasFeeError || cg.fee0 > 0 || cg.fee1 > 0) return null;
+    const target = state.prefs.byPair ? cg.target : p;
+    if (!target || target.uid !== p.uid) return null;
+    const c = f.byChain[p.chain];
+    if (!c) return null;
+    const chain = Y.chainOf(p.chain);
+    const wrappedIndex = p.token0.address === chain.wrapped ? 0 : p.token1.address === chain.wrapped ? 1 : -1;
+    const plan = Y.topUpPlan({ sqrtPriceX96: p.sqrtPrice, tick: p.tick, tickLower: p.tickLower, tickUpper: p.tickUpper,
+      fee0: 0n, fee1: 0n, wallet0: c.tokens[p.token0.address] || 0n, wallet1: c.tokens[p.token1.address] || 0n,
+      native: wrappedIndex < 0 ? 0n : nativeSpare(c.native, c.price, COMPOUND_GAS, WRAP_GAS), wrappedIndex });
+    const x = Y.topUpAt(plan, 1);
+    if (x.n0 === 0n && x.n1 === 0n) return null;
+    const a0 = Y.toUnits(x.n0, p.token0.decimals), a1 = Y.toUnits(x.n1, p.token1.decimals);
+    // A token with no price can't be held to the minimum; it still needs some amount to fit.
+    const priced = p.token0.usd > 0 && p.token1.usd > 0;
+    const usd = a0 * p.token0.usd + a1 * p.token1.usd;
+    if (priced && usd < MIN_ADD_USD) return null;
+    return { target, a0, a1, usd: priced ? usd : null, wraps: x.wrap > 0n };
+  }
+
+  function addTip(a) {
+    const p = a.target, nat = Y.chainOf(p.chain).native;
+    return `No fees to compound. Add up to ${fmtAmt(a.a0)} ${p.token0.symbol} + ${fmtAmt(a.a1)} ${p.token1.symbol}`
+      + `${a.usd == null ? '' : ` (${fmtUsd(a.usd)})`} from your wallet to #${p.id}`
+      + `${a.wraps ? `, wrapping some ${nat} for the W${nat} side` : ''}. You choose how much on the next screen; nothing is swapped.`;
   }
 
   // ---------- wallet connection (EIP-6963, with window.ethereum fallback) ----------
@@ -543,7 +629,7 @@
     const prov = p.provider;
     state.provider = prov;
     if (prov.on) {
-      prov.on('accountsChanged', (accs) => { state.account = accs && accs[0] ? accs[0].toLowerCase() : null; render(); });
+      prov.on('accountsChanged', (accs) => { state.account = accs && accs[0] ? accs[0].toLowerCase() : null; state.funds = null; render(); loadFunds(); });
       prov.on('chainChanged', (id) => { state.chainId = parseInt(id, 16); render(); });
     }
   }
@@ -556,6 +642,7 @@
       state.chainId = parseInt(await p.provider.request({ method: 'eth_chainId' }), 16);
       store.set(K.rdns, p.info.rdns || 'injected');
       state.pickerOpen = false;
+      loadFunds();
     } catch (e) {
       showError('Wallet connection failed: ' + (e.message || e));
     }
@@ -575,6 +662,7 @@
       state.account = accs[0].toLowerCase();
       state.chainId = parseInt(await p.provider.request({ method: 'eth_chainId' }), 16);
       render();
+      loadFunds();
     } catch (_) { /* stay disconnected */ }
   }
 
@@ -597,7 +685,7 @@
   function disconnect() {
     const prov = state.provider;
     if (prov && prov.request) prov.request({ method: 'wallet_revokePermissions', params: [{ eth_accounts: {} }] }).catch(() => {});
-    state.account = null; state.chainId = null; state.provider = null;
+    state.account = null; state.chainId = null; state.provider = null; state.funds = null;
     store.del(K.rdns);
     render();
   }
@@ -633,6 +721,16 @@
    * (Gavin, 2026-09-29; it replaced a flat 1,000 PLS).
    */
   const reserveWei = (price, compoundGas) => 2n * (compoundGas || COMPOUND_GAS) * price;
+  // Gas a wrap (deposit()) is costed at when it can't be estimated.
+  const WRAP_GAS = 50000n;
+  /**
+   * Native a top-up or an Add may wrap: the balance above the reserve, the
+   * compound or add's own gas and the wrap's, both at twice the gas price.
+   */
+  const nativeSpare = (bal, price, compoundGas, wrapGas) => {
+    const keep = reserveWei(price, compoundGas) + 2n * compoundGas * price + 2n * wrapGas * price;
+    return bal > keep ? bal - keep : 0n;
+  };
 
   /**
    * Refuse a transaction that would leave the wallet below the native reserve
@@ -723,19 +821,18 @@
       bal(g.token0.address), bal(g.token1.address),
       Y.rpcCall('eth_getBalance', [acct, 'latest'], rpcs),
       Y.rpcCall('eth_gasPrice', [], rpcs),
-      wrappedIndex < 0 ? '0x0' : Y.rpcCall('eth_estimateGas', [{ from: acct, to: chain.wrapped, data: Y.SEL.deposit, value: '0x1' }], rpcs).catch(() => '0xc350'),
+      wrappedIndex < 0 ? '0x0' : Y.rpcCall('eth_estimateGas', [{ from: acct, to: chain.wrapped, data: Y.SEL.deposit, value: '0x1' }], rpcs).catch(() => '0x' + WRAP_GAS.toString(16)),
     ]);
     const w = Y.wordsOf(ps), price = BigInt(priceHex), compoundGas = gas && gas.units ? gas.units : COMPOUND_GAS;
-    const keep = reserveWei(price, compoundGas) + 2n * compoundGas * price + 2n * BigInt(wrapGasHex) * price;
     const nativeBal = BigInt(nativeHex);
-    const native = wrappedIndex < 0 || nativeBal <= keep ? 0n : nativeBal - keep;
+    const native = wrappedIndex < 0 ? 0n : nativeSpare(nativeBal, price, compoundGas, BigInt(wrapGasHex));
     const plan = Y.topUpPlan({ sqrtPriceX96: w[0].toString(), tick: Number(BigInt.asIntN(24, w[1])), tickLower: t.tickLower, tickUpper: t.tickUpper,
       fee0: f0, fee1: f1, wallet0: w0, wallet1: w1, native, wrappedIndex });
-    return { ...plan, compoundGas, reserve: reserveWei(price, compoundGas), wrapCost: 2n * BigInt(wrapGasHex) * price };
+    return { ...plan, compoundGas, nativeBal, price, reserve: reserveWei(price, compoundGas), wrapCost: 2n * BigInt(wrapGasHex) * price };
   }
 
   async function runGroup(g, mode, opts = {}) {
-    const label = `${g.token0.symbol}/${g.token1.symbol}`;
+    const label = `${esc(g.token0.symbol)}/${esc(g.token1.symbol)}`;
     const acct = state.account;
     try {
       if (!acct || g.owner !== acct) throw new Error('Connect the wallet that owns these positions');
@@ -1012,6 +1109,162 @@
     await refresh();
   }
 
+  // ---------- add the wallet's own tokens to a position ----------
+  /**
+   * Add (see addOffer for where it's offered). No fees are involved:
+   *   1. Check the connected wallet still holds the position and can pay for
+   *      gas with the reserve left, before any approval.
+   *   2. Read balances and the pool price; the confirm screen picks how much.
+   *   3. Wrap native for a WPLS/WETH side if needed, approve, simulate, and
+   *      set minimums from the simulation less slippage.
+   *   4. Final dry run and reserve check, then the wallet signs.
+   */
+  async function runAdd(p) {
+    const a = addOffer(p);
+    if (!a) return false;
+    const t = a.target, g = { ...soloGroup(t), statusKey: p.uid }, key = g.statusKey;
+    const label = `${esc(g.token0.symbol)}/${esc(g.token1.symbol)}`, acct = state.account;
+    try {
+      const chain = Y.chainOf(g.chain), rpcs = chain.rpcs;
+      if (state.chainId !== chain.id) {
+        setStatus(key, `Switch your wallet to ${esc(chain.name)}…`);
+        await switchChain(g.chain);
+        renderConnect();
+      }
+      setStatus(key, 'Reading your balances…');
+      const [ownerHex, onchain, balHex, priceHex] = await Promise.all([
+        Y.ethCall(g.nfpm, Y.SEL.ownerOf + Y.word(t.id), null, rpcs),
+        Y.readPosition(g.nfpm, t.id, rpcs),
+        Y.rpcCall('eth_getBalance', [acct, 'latest'], rpcs),
+        Y.rpcCall('eth_gasPrice', [], rpcs),
+      ]);
+      // increaseLiquidity adds the caller's tokens to any position, whoever
+      // holds it, so one sent away since the last refresh would be a gift.
+      if ('0x' + Y.wordsOf(ownerHex)[0].toString(16).padStart(40, '0') !== acct) throw new Error(`The connected wallet no longer holds #${t.id}. Refresh the page.`);
+      if (onchain.token0 !== g.token0.address || onchain.token1 !== g.token1.address) throw new Error('Position does not match this pair');
+      const need = 4n * COMPOUND_GAS * BigInt(priceHex);
+      if (BigInt(balHex) < need) {
+        const f = (w) => fmtAmt(Number(w) / 1e18);
+        throw new Error(`An add needs about ${f(need / 2n)} ${chain.native} for gas and at least as much again must stay in the wallet (${f(need)} ${chain.native} in all); `
+          + `the wallet has ${f(BigInt(balHex))} ${chain.native}. Add ${chain.native} and try again.`);
+      }
+      const tu = await topUpContext(g, 0n, 0n, null);
+      if (!(tu.lMax > 0)) throw new Error('Your wallet has nothing that fits this range at the current price.');
+      const res = await addModal(g, tu);
+      const x = res.ok ? Y.topUpAt(tu, res.t) : null;
+      if (!x || (x.n0 === 0n && x.n1 === 0n)) { delete state.status[key]; renderList(); return false; }
+
+      if (x.wrap > 0n) {
+        // The position manager pays a side all in native or all in the
+        // wrapped token, never a mix, so native is wrapped first.
+        await checkNativeReserve(g.chain, chain.wrapped, Y.SEL.deposit, { value: x.wrap, compoundGas: tu.compoundGas });
+        setStatus(key, `${label}: wrap ${fmtAmt(Number(x.wrap) / 1e18)} ${esc(chain.native)} in your wallet…`);
+        const wh = await sendTx(Y.SEL.deposit, chain.wrapped, x.wrap);
+        setStatus(key, `${label}: wrapping ${txLink(wh, g.chain)}…`);
+        const wrc = await waitReceipt(wh, rpcs);
+        if (wrc.status !== '0x1') throw new Error('Wrapping ' + chain.native + ' failed');
+      }
+      await ensureAllowance(g, g.token0, x.n0, label);
+      await ensureAllowance(g, g.token1, x.n1, label);
+
+      setStatus(key, 'Simulating…');
+      const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
+      const sim = await Y.ethCall(g.nfpm, Y.buildAddData({ targetId: t.id, amount0: x.n0, amount1: x.n1, deadline }), acct, rpcs);
+      const r = Y.decodeIncreaseResult(sim);
+      const bps = state.prefs.slippageBps;
+      const data = Y.buildAddData({ targetId: t.id, amount0: x.n0, amount1: x.n1,
+        min0: Y.withSlippage(r.used0, bps), min1: Y.withSlippage(r.used1, bps), deadline });
+
+      // The wallet may have been moved off this chain while the modal was open.
+      if (state.chainId !== chain.id) await switchChain(g.chain);
+      await Y.ethCall(g.nfpm, data, acct, rpcs);
+      const gas = await gasQuote(g.nfpm, data, g.chain);
+      await checkNativeReserve(g.chain, g.nfpm, data, { compoundGas: gas ? gas.units : null });
+      setStatus(key, 'Confirm in your wallet…');
+      const hash = await sendTx(data, g.nfpm);
+      setStatus(key, `Pending ${txLink(hash, g.chain)}…`);
+      const rc = await waitReceipt(hash, rpcs);
+      if (rc.status !== '0x1') throw new Error('Transaction reverted ' + hash);
+      const used0 = Y.toUnits(r.used0, g.token0.decimals), used1 = Y.toUnits(r.used1, g.token1.decimals);
+      const usd = used0 * g.token0.usd + used1 * g.token1.usd;
+      setStatus(key, `Added ${fmtAmt(used0)} ${esc(g.token0.symbol)} + ${fmtAmt(used1)} ${esc(g.token1.symbol)}${usd > 0 ? ` (${fmtUsd(usd)})` : ''} from your wallet to #${esc(t.id)} ${txLink(hash, g.chain)}`, 'ok');
+      return true;
+    } catch (e) {
+      setStatus(key, esc(e && e.code === 4001 ? 'Rejected in wallet.' : (e.message || String(e))), 'bad');
+      return false;
+    }
+  }
+
+  /**
+   * How much to add: a slider from nothing to the most that fits (where it
+   * starts), with the deposit panel showing what goes in per token and where
+   * it comes from. Resolves { ok, t } with t in 0..1 for topUpAt.
+   */
+  function addModal(g, tu) {
+    const t = g.target, chain = Y.chainOf(g.chain), nat = esc(chain.native);
+    const sym0 = esc(g.token0.symbol), sym1 = esc(g.token1.symbol);
+    const d0 = g.token0.decimals, d1 = g.token1.decimals, usd0 = g.token0.usd || 0, usd1 = g.token1.usd || 0;
+    const units = (raw, dec) => Number(raw) / 10 ** dec;
+    const view = (pos) => {
+      const x = Y.topUpAt(tu, pos);
+      const a0 = units(x.n0, d0), a1 = units(x.n1, d1), total = a0 * usd0 + a1 * usd1;
+      const from = (a, s, held, dec, i) => (!(a > 0) ? 'none at this range'
+        : tu.wrappedIndex === i && s.fromNative > 0n
+          ? `${fmtAmt(units(s.fromWallet, dec))} W${nat} you hold<br><span class="w">+ ${fmtAmt(Number(s.fromNative) / 1e18)} ${nat} wrapped first</span>`
+          : `of ${fmtAmt(units(held, dec))} in your wallet`);
+      const nativeAfter = tu.nativeBal - 2n * tu.compoundGas * tu.price - (x.wrap > 0n ? x.wrap + tu.wrapCost : 0n);
+      return {
+        empty: x.n0 === 0n && x.n1 === 0n, wraps: x.wrap > 0n, nativeAfter: Number(nativeAfter) / 1e18,
+        html: `<div class="dep-h"><span>Going into #${esc(t.id)}</span><span class="dep-badge">all from your wallet</span></div>
+          <div class="dep-total">≈ ${fmtUsd(total)}</div>
+          <div class="dep-sub">${usd0 > 0 && usd1 > 0 ? 'Your own tokens, at the pool\'s current price' : 'A token has no price, so the $ total leaves it out'}</div>
+          <div class="dep-tok"><span class="dep-amt">${fmtAmt(a0)}<span class="sym">${sym0}</span></span><span class="dep-from">${from(a0, x.s0, tu.wallet0, d0, 0)}</span></div>
+          <div class="dep-tok"><span class="dep-amt">${fmtAmt(a1)}<span class="sym">${sym1}</span></span><span class="dep-from">${from(a1, x.s1, tu.wallet1, d1, 1)}</span></div>`,
+      };
+    };
+    const v0 = view(1);
+    const rows = [
+      ['Into', `#${esc(t.id)} · ${feePct(t.feeTier)} · ${t.inRange ? 'in range' : 'out of range'}${t.estApr == null ? '' : ` · est. ${fmtPct(t.estApr)} APR`}`],
+      ['From', esc(walletName(g.owner))],
+      ['Network', esc(g.chainName)],
+      ['Network fee', 'Your wallet will show it, plus any approvals'],
+      [`${nat} left after gas`, `≈ <span id="mNative">${fmtAmt(v0.nativeAfter)}</span> ${nat}<br><span style="color:var(--dim)">keeps at least ${fmtAmt(Number(tu.reserve) / 1e18)}</span>`],
+    ];
+    const single = !t.inRange ? (t.tick < t.tickLower ? sym0 : sym1) : null;
+    return new Promise((resolve) => {
+      const root = $('modalRoot');
+      root.innerHTML = `<div class="modal-bg" id="mbg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mh">
+        <h2 id="mh">Add to ${sym0} / ${sym1}</h2>
+        <div class="dep wallet" id="mDep" aria-live="polite">${v0.html}</div>
+        <div class="topup">
+          <div class="topup-h"><span>How much</span><span id="mPct">Most that fits</span></div>
+          <input type="range" id="mTop" min="0" max="1000" step="1" value="1000" aria-label="How much to add from your wallet">
+          <div class="topup-ends"><span>Nothing</span><span>Most that fits</span></div>
+        </div>
+        ${rows.map(([k, v]) => `<div class="kv"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+        ${single ? `<p class="note warn">#${esc(t.id)} is out of range, so it takes only ${single} and earns no fees until the price comes back into its range.</p>` : ''}
+        <p class="note">Adds ${sym0} and ${sym1} from your wallet to #${esc(t.id)}; there are no fees on this pair to compound. Nothing is swapped: the amounts are what fits the range at today's price, and the rest stays in your wallet.${tu.wrappedIndex >= 0 ? ` When the W${nat} you hold isn't enough, ${nat} is wrapped to W${nat} in a separate transaction first.` : ''} At least ${fmtAmt(Number(tu.reserve) / 1e18)} ${nat}, twice the cost of a compound, always stays in the wallet. A simulation after you confirm sets the exact amounts, with minimums ${(state.prefs.slippageBps / 100).toFixed(2)}% under it.</p>
+        <div class="modal-actions"><button class="btn" type="button" id="mNo">Cancel</button><button class="btn primary" type="button" id="mYes">${v0.wraps ? 'Wrap, then confirm in wallet' : 'Confirm in wallet'}</button></div>
+      </div></div>`;
+      const range = $('mTop');
+      const done = (ok) => { const pos = Number(range.value) / 1000; root.innerHTML = ''; document.removeEventListener('keydown', onKey); resolve({ ok, t: pos }); };
+      range.addEventListener('input', () => {
+        const pos = Number(range.value) / 1000, v = view(pos);
+        $('mDep').innerHTML = v.html;
+        $('mNative').textContent = fmtAmt(v.nativeAfter);
+        $('mPct').textContent = pos === 1 ? 'Most that fits' : Math.round(pos * 100) + '%';
+        $('mYes').disabled = v.empty;
+        $('mYes').textContent = v.wraps ? 'Wrap, then confirm in wallet' : 'Confirm in wallet';
+      });
+      const onKey = (e) => { if (e.key === 'Escape') done(false); };
+      document.addEventListener('keydown', onKey);
+      $('mNo').onclick = () => done(false);
+      $('mYes').onclick = () => done(true);
+      $('mbg').onclick = (e) => { if (e.target.id === 'mbg') done(false); };
+      $('mYes').focus();
+    });
+  }
+
   // ---------- send a position (the V3 NFT) to another address ----------
   /**
    * Check a typed destination for position p: { to, cs, warn } when it can
@@ -1285,6 +1538,13 @@
       const g = actionGroup(p, act);
       state.running = true; renderList();
       const ok = await runGroup(g, act);
+      state.running = false;
+      if (ok) await refresh(); else renderList();
+    } else if (act === 'add') {
+      const p = state.positions.find((x) => x.uid === el.dataset.uid);
+      if (!p || state.running) return;
+      state.running = true; renderList();
+      const ok = await runAdd(p);
       state.running = false;
       if (ok) await refresh(); else renderList();
     } else if (act === 'send') {
