@@ -119,7 +119,7 @@
   /**
    * The connected wallet's balances of every token in its own positions'
    * pairs, plus native and the gas price, one RPC batch per chain. Only
-   * decides whether a row offers Add; the Add itself reads them again.
+   * decides whether a row's Add is enabled; the Add itself reads them again.
    * Public RPC nodes, no Worker.
    */
   async function loadFunds() {
@@ -132,7 +132,7 @@
       const c = byChain[p.chain] || (byChain[p.chain] = new Set());
       c.add(p.token0.address); c.add(p.token1.address);
     }
-    const out = { account: acct, byChain: {} };
+    const out = { account: acct, byChain: {}, failed: {} };
     await Promise.all(Object.entries(byChain).map(async ([key, set]) => {
       const tokens = [...set];
       const reqs = tokens.map((t) => ({ method: 'eth_call', params: [{ to: t, data: Y.SEL.balanceOf + Y.addrWord(acct) }, 'latest'] }));
@@ -141,11 +141,11 @@
         const res = await Y.rpcBatch(reqs, Y.chainOf(key).rpcs);
         const val = (r) => (r && !r.error && r.result && r.result !== '0x' ? BigInt(r.result.slice(0, 66)) : null);
         const price = val(res[res.length - 1]), native = val(res[res.length - 2]);
-        if (price == null || native == null) return;
+        if (price == null || native == null) { out.failed[key] = 'no native balance or gas price'; return; }
         const bal = {};
         tokens.forEach((t, i) => { const v = val(res[i]); if (v != null) bal[t] = v; });
         out.byChain[key] = { tokens: bal, native, price };
-      } catch (_) { /* no Add buttons on this chain until the next refresh */ }
+      } catch (e) { out.failed[key] = e.message || String(e); /* Add stays disabled on this chain until the next refresh */ }
     }));
     if (seq !== state.fundsSeq || state.account !== acct) return;
     state.funds = out;
@@ -452,7 +452,7 @@
         <div class="td wide"><div class="actions">
           <button class="btn small primary" type="button" data-act="compound" data-uid="${esc(p.uid)}" ${chk.ok && !busy ? '' : 'disabled'} title="${esc(compoundTip)}">Compound${state.prefs.byPair && others > 0 ? ` <span class="grp-n">×${others + 1}</span>` : ''}</button>
           <button class="btn small" type="button" data-act="collect" data-uid="${esc(p.uid)}" ${col.canCollect && !busy ? '' : 'disabled'} title="${esc(col.canCollect ? "Collect this position's fees to your wallet" : col.why)}">Collect</button>
-          ${add ? `<button class="btn small add" type="button" data-act="add" data-uid="${esc(p.uid)}" ${busy ? 'disabled' : ''} title="${esc(addTip(add))}">Add</button>` : ''}
+          <button class="btn small add" type="button" data-act="add" data-uid="${esc(p.uid)}" ${add.ok && !busy ? '' : 'disabled'} title="${esc(add.ok ? addTip(add) : add.why)}">Add</button>
           <button class="btn small" type="button" data-act="send" data-uid="${esc(p.uid)}" ${isMine(p.owner) && !busy ? '' : 'disabled'} title="${isMine(p.owner) ? 'Send this position (its NFT) to another address' : 'Connect this wallet to send its positions'}">Send</button>
         </div></div>
         ${st ? `<div class="status ${st.kind || ''}">${st.html}</div>` : ''}
@@ -518,36 +518,54 @@
   // Smallest Add worth offering, in dollars: below that the gas costs more than goes in.
   const MIN_ADD_USD = 1;
   /**
-   * Add: put the connected wallet's own tokens into a position, its own
-   * button next to Compound whatever the fees (Gavin, 2026-10-31: offering it
-   * only with nothing to claim meant it never showed, since any swap earns
-   * fees). Offered when the wallet holds enough of the pair's tokens to fit
-   * the range at the most recent price (native counts for a WPLS/WETH side,
-   * above the reserve). Unclaimed fees stay where they are. With by-pair on it
-   * goes into the pair's target, so only that row offers it; with it off each
-   * position takes its own, out of range too (one token only). No swaps.
-   * Returns what the most that fits would be, or null.
+   * Add: put the connected wallet's own tokens into a position. Its own
+   * button on every row, next to Compound, whatever the fees (Gavin,
+   * 2026-10-31: offering it only with nothing to claim meant it never showed,
+   * since any swap earns fees; hidden when unfundable left him guessing why).
+   * Enabled when the wallet holds enough of the pair's tokens to fit the range
+   * at the most recent price (native counts for a WPLS/WETH side, above the
+   * reserve); otherwise disabled with the reason. Unclaimed fees stay where
+   * they are. With by-pair on it goes into the pair's target, so only that
+   * row's is enabled; with it off each position takes its own, out of range
+   * too (one token only). No swaps. Returns { ok: true, ... } with the most
+   * that fits, or { ok: false, why }.
    */
   function addOffer(p) {
-    const acct = state.account, f = state.funds;
-    if (!acct || p.owner !== acct || !f || f.account !== acct) return null;
+    const acct = state.account, f = state.funds, s0 = p.token0.symbol, s1 = p.token1.symbol;
+    if (!acct || p.owner !== acct) return { ok: false, why: 'Connect this wallet to add to its positions' };
     const target = state.prefs.byPair ? actionGroup(p, 'compound').target : p;
-    if (!target || target.uid !== p.uid) return null;
+    if (!target) return { ok: false, why: `No in-range ${s0}/${s1} position to add to; turn off Compound by pair to add to this one` };
+    if (target.uid !== p.uid) return { ok: false, why: `With Compound by pair on, adding to ${s0}/${s1} goes to #${target.id} (highest est. APR); turn it off to add to this one` };
+    if (!f || f.account !== acct) return { ok: false, why: "Reading your wallet's balances…" };
     const c = f.byChain[p.chain];
-    if (!c) return null;
+    if (!c) return { ok: false, why: `Couldn't read your wallet's balances${f.failed[p.chain] ? ` (${f.failed[p.chain]})` : ''}; try Refresh` };
     const chain = Y.chainOf(p.chain);
     const wrappedIndex = p.token0.address === chain.wrapped ? 0 : p.token1.address === chain.wrapped ? 1 : -1;
     const plan = Y.topUpPlan({ sqrtPriceX96: p.sqrtPrice, tick: p.tick, tickLower: p.tickLower, tickUpper: p.tickUpper,
       fee0: 0n, fee1: 0n, wallet0: c.tokens[p.token0.address] || 0n, wallet1: c.tokens[p.token1.address] || 0n,
       native: wrappedIndex < 0 ? 0n : nativeSpare(c.native, c.price, COMPOUND_GAS, WRAP_GAS), wrappedIndex });
     const x = Y.topUpAt(plan, 1);
-    if (x.n0 === 0n && x.n1 === 0n) return null;
+    if (x.n0 === 0n && x.n1 === 0n) {
+      // Which side is missing. A WPLS/WETH side counts native above the reserve.
+      const lacks = (i) => {
+        const sym = i === 0 ? s0 : s1;
+        return wrappedIndex === i ? `${sym} (or ${chain.native} above the ${chain.native} kept for gas)` : sym;
+      };
+      if (!p.inRange) {
+        const i = p.tick < p.tickLower ? 0 : 1;
+        return { ok: false, why: `Out of range, so this position takes only ${i === 0 ? s0 : s1}, and your wallet has no ${lacks(i)}` };
+      }
+      const miss = [0, 1].filter((i) => (i === 0 ? plan.avail0 : plan.avail1) === 0n);
+      return { ok: false, why: `In range, so this position needs both ${s0} and ${s1}; your wallet has no ${miss.map(lacks).join(' and no ') || 'usable amount of either'}. Nothing is swapped.` };
+    }
     const a0 = Y.toUnits(x.n0, p.token0.decimals), a1 = Y.toUnits(x.n1, p.token1.decimals);
     // A token with no price can't be held to the minimum; it still needs some amount to fit.
     const priced = p.token0.usd > 0 && p.token1.usd > 0;
     const usd = a0 * p.token0.usd + a1 * p.token1.usd;
-    if (priced && usd < MIN_ADD_USD) return null;
-    return { target, a0, a1, usd: priced ? usd : null, wraps: x.wrap > 0n };
+    if (priced && usd < MIN_ADD_USD) {
+      return { ok: false, why: `The most your wallet's ${s0} and ${s1} could add here is ${fmtUsd(usd)}, under the $${MIN_ADD_USD} minimum` };
+    }
+    return { ok: true, target, a0, a1, usd: priced ? usd : null, wraps: x.wrap > 0n };
   }
 
   function addTip(a) {
@@ -1117,7 +1135,7 @@
    */
   async function runAdd(p) {
     const a = addOffer(p);
-    if (!a) return false;
+    if (!a.ok) return false;
     const t = a.target, g = { ...soloGroup(t), statusKey: p.uid }, key = g.statusKey;
     const label = `${esc(g.token0.symbol)}/${esc(g.token1.symbol)}`, acct = state.account;
     try {
