@@ -19,12 +19,16 @@
   const CHAINS = {
     pulsechain: {
       key: 'pulsechain', id: 369, hex: '0x171', name: 'PulseChain', native: 'PLS',
-      // Order measured 2026-09-24: publicnode and g4mm4 answer a 25-call batch
-      // in ~300 ms; rpc.pulsechain.com takes 4 s for 10 and times out at 25.
-      rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
-      archiveRpcs: ['https://rpc-pulsechain.g4mm4.io', 'https://rpc.pulsechain.com'],
+      // g4mm4 takes all its servers offline for good on 2026-11-21; replaced 2026-11-19.
+      // Measured then: publicnode and pulsechainrpc.com answer a 25-call batch
+      // in ~250 ms (no historical state); rpc.pulsechain.com takes 4 s for 10
+      // and times out at 25. For history, thirdweb's public RPC answered a
+      // 25-call batch 24h back in 0.67 s (one earlier 25-call batch timed out),
+      // so rpc.pulsechain.com stays behind it.
+      rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc.pulsechainrpc.com', 'https://rpc.pulsechain.com'],
+      archiveRpcs: ['https://369.rpc.thirdweb.com', 'https://rpc.pulsechain.com'],
       // eth_getLogs from block 0: rpc.pulsechain.com takes the full range in
-      // one call (6 positions' Collect logs in 0.8 s); g4mm4 caps it at 10k blocks.
+      // one call (6 positions' Collect logs in 0.8 s).
       logRpcs: ['https://rpc.pulsechain.com'],
       explorerTx: 'https://otter.pulsechain.com/tx/',
       dexscreenerSlug: 'pulsechain',
