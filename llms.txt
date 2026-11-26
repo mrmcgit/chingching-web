@@ -26,6 +26,7 @@
 - PulseChain Oceanomics: https://chingching.xyz/oceanomics/
 - Pulse Cannon (defend the tokens): https://chingching.xyz/pulse-cannon/
 - Pump & Jump (ride the real PLS chart): https://chingching.xyz/pump-and-jump/
+- Ching Ching - Year in Review: https://chingching.xyz/year/
 - LP Yield (claimable V3 LP fees on PulseChain and Ethereum): https://chingching.xyz/yield/
 - App Store: https://apps.apple.com/app/ching-ching/id1622965914
 

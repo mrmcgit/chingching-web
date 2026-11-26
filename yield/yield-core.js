@@ -25,7 +25,9 @@
       // and times out at 25. For history, thirdweb's public RPC answered a
       // 25-call batch 24h back in 0.67 s (one earlier 25-call batch timed out),
       // so rpc.pulsechain.com stays behind it.
-      rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc.pulsechainrpc.com', 'https://rpc.pulsechain.com'],
+      // LibertySwap's RPC added 2026-11-26: 25-call batch in ~0.3 s, no history.
+      // Project Pi's lite RPC is left out here: it answers batches with no results.
+      rpcs: ['https://pulsechain-rpc.publicnode.com', 'https://rpc.pulsechainrpc.com', 'https://rpc.libertyswap.finance', 'https://rpc.pulsechain.com'],
       archiveRpcs: ['https://369.rpc.thirdweb.com', 'https://rpc.pulsechain.com'],
       // eth_getLogs from block 0: rpc.pulsechain.com takes the full range in
       // one call (6 positions' Collect logs in 0.8 s).

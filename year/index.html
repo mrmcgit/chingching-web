@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Reads public data only: two PulseChain explorers, two PulseChain RPCs and
+     DexScreener prices. Scripts are same-origin files only: an injected
+     <script> or inline handler will not run. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src https://scan.pulsefusion.io https://api.scan.pulsechain.com https://rpc.pulsechain.com https://369.rpc.thirdweb.com https://api.dexscreener.com; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Ching Ching - Year in Review</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="description" content="Your PulseChain year on one card: transactions, active days, swaps, HEX stakes, LP and how your stack changed at today's prices. Percentages and counts only.">
+<meta property="og:title" content="Ching Ching Year in Review">
+<meta property="og:description" content="Your PulseChain year on one card: transactions, active days, swaps, HEX stakes, LP and how your stack changed at today's prices. Percentages and counts only.">
+<link rel="canonical" href="https://chingching.xyz/year/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Ching Ching">
+<meta property="og:url" content="https://chingching.xyz/year/">
+<meta property="og:image" content="https://chingching.xyz/og/home.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://chingching.xyz/og/home.jpg">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0a0a0f; --card: #11111b; --line: rgba(255,255,255,0.08); --line2: rgba(255,255,255,0.14);
+    --text: #e8e8e8; --dim: #8a8a9a; --dimmer: #5b5b6b; --accent: #8a7aed; --accent2: #6a5acd;
+    --up: #34c759; --down: #ff3b30; --gold: #FFD166; --warn: #ffb020;
+    --brand: linear-gradient(90deg, #FF2E9A 0%, #C63BFF 36%, #5B7BFF 68%, #00D9FF 100%);
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; padding: 20px 16px 60px;
+    font-variant-numeric: tabular-nums;
+  }
+  button { font: inherit; color: inherit; }
+  a { color: #b3a8ff; }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* ---------- site menu (hamburger), same as the portfolio page ---------- */
+  .site-nav { position:fixed; top:14px; left:14px; z-index:100; }
+  .site-nav-btn { width:34px; height:34px; border:1px solid rgba(255,255,255,0.14); border-radius:9px; background:rgba(255,255,255,0.05); color:#e8e8e8; cursor:pointer; font-size:15px; line-height:1; }
+  .site-nav-btn:active { transform:scale(0.94); }
+  .site-nav-menu { position:absolute; top:40px; left:0; min-width:156px; padding:6px; background:#181826; border:1px solid rgba(255,255,255,0.12); border-radius:12px; box-shadow:0 12px 32px rgba(0,0,0,0.5); z-index:100; }
+  .site-nav-menu a { display:block; padding:9px 12px; border-radius:8px; color:#e8e8e8; text-decoration:none; font-weight:700; font-size:13px; }
+  .site-nav-menu a:hover { background:rgba(255,255,255,0.08); }
+  .site-nav-menu a.here { color:#FFD166; }
+  .site-nav-menu.hidden { display:none; }
+  .site-nav-menu a[hidden] { display:none; }
+
+  /* ---------- top bar ---------- */
+  .top { display: flex; align-items: center; gap: 12px; margin: 0 0 18px 44px; min-height: 36px; }
+  .brand { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .brand img { width: 34px; height: 34px; border-radius: 8px; }
+  .brand h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .brand .sub { font-size: 11px; color: var(--dim); margin-top: 1px; }
+
+  .panel { background: linear-gradient(145deg, #141420 0%, #0d0d18 55%, #12101e 100%); border: 1px solid var(--line); border-radius: 18px; padding: 18px; margin-bottom: 14px; }
+  .hero-title { font-size: 30px; font-weight: 800; letter-spacing: -0.8px; line-height: 1.15; }
+  .hero-title span { background: var(--brand); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .lead { font-size: 14px; color: var(--dim); line-height: 1.55; margin-top: 8px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; border-radius: 12px; border: 1px solid var(--line2); background: rgba(255,255,255,0.04); font-size: 14px; font-weight: 700; cursor: pointer; white-space: nowrap; transition: background .15s, opacity .15s; }
+  .btn:hover { background: rgba(255,255,255,0.08); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn.primary { border: none; background: var(--brand); color: #fff; }
+  .btn.primary:hover { opacity: 0.92; }
+
+  form { margin-top: 16px; }
+  label.k { display: block; font-size: 11px; font-weight: 700; color: #9a94c0; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  textarea { width: 100%; min-height: 64px; resize: vertical; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line2); background: rgba(255,255,255,0.04); color: var(--text); font: 13px 'SF Mono', 'Menlo', monospace; outline: none; }
+  textarea:focus { border-color: rgba(138,122,237,0.6); }
+  .row { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+  .row .grow { flex: 1; min-width: 160px; font-size: 12px; color: var(--dimmer); line-height: 1.45; }
+  .err { color: #ff7a70; font-size: 13px; margin-top: 10px; line-height: 1.45; }
+  .err:empty { display: none; }
+
+  /* ---------- progress ---------- */
+  .bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.07); overflow: hidden; margin-top: 12px; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--brand); border-radius: 4px; transition: width .3s ease; }
+  .progress-detail { font-size: 13px; color: var(--dim); margin-top: 10px; min-height: 18px; }
+  .progress-note { font-size: 12px; color: var(--dimmer); margin-top: 6px; line-height: 1.45; }
+
+  /* ---------- result ---------- */
+  .card-wrap { display: flex; justify-content: center; }
+  canvas#card { width: 100%; max-width: 540px; height: auto; aspect-ratio: 4 / 5; border-radius: 18px; display: block; box-shadow: 0 18px 50px rgba(0,0,0,0.55); background: #07080f; }
+  .actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+  .facts { margin-top: 14px; }
+  .facts h2 { font-size: 11px; font-weight: 700; color: #9a94c0; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+  .facts dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; }
+  .facts dt, .facts dd { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .facts dt { color: var(--dim); white-space: nowrap; padding-right: 14px; }
+  .facts dd { text-align: right; font-weight: 700; }
+  .facts .story { font-size: 15px; font-weight: 700; line-height: 1.4; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .capped { font-size: 12px; color: var(--warn); margin-top: 10px; line-height: 1.45; }
+
+  .foot { font-size: 12px; color: var(--dimmer); line-height: 1.6; margin-top: 18px; }
+  .foot p + p { margin-top: 8px; }
+  .foot b { color: var(--dim); font-weight: 600; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="site-nav">
+  <button class="site-nav-btn" id="siteNavBtn" aria-label="Menu" aria-expanded="false">&#9776;</button>
+  <nav class="site-nav-menu hidden" id="siteNavMenu">
+    <a href="/arcade/">Arcade</a>
+    <a href="/oceanomics/">Oceanomics</a>
+    <a href="/">Portfolio</a>
+    <a href="/year/" class="here">Year in Review</a>
+    <a href="/yield/" data-app-hide hidden>LP Yield</a>
+  </nav>
+</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <img src="/logo.png" alt="">
+      <div>
+        <h1>Year in Review</h1>
+        <div class="sub">Ching Ching</div>
+      </div>
+    </div>
+  </header>
+
+  <section class="panel" id="intro">
+    <div class="hero-title">Your <span id="yearLabel">year</span> on PulseChain</div>
+    <p class="lead">Paste your wallet address. The page reads this year's transactions and your 1 January balances from the blockchain and makes a card you can save or share. The card shows percentages and counts only, never amounts.</p>
+    <form id="form" autocomplete="off">
+      <label class="k" for="wallets">Wallet addresses</label>
+      <textarea id="wallets" spellcheck="false" placeholder="0x..., one or more, separated by commas"></textarea>
+      <div class="row">
+        <div class="grow">Only add wallets that are yours: a wallet you only watch would count someone else's year as yours.</div>
+        <button class="btn primary" type="submit" id="go">Make my Year in Review</button>
+      </div>
+      <div class="err" id="formErr" role="alert"></div>
+    </form>
+  </section>
+
+  <section class="panel hidden" id="reading" aria-live="polite">
+    <div class="hero-title" style="font-size:22px">Reading the chain</div>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="barWrap"><span id="bar"></span></div>
+    <div class="progress-detail" id="detail">Starting</div>
+    <div class="progress-note">A busy wallet can take a minute or two: every page of history comes from a public explorer.</div>
+    <div class="row"><button class="btn" type="button" id="cancel">Cancel</button></div>
+  </section>
+
+  <section class="hidden" id="result">
+    <div class="card-wrap"><canvas id="card" width="1080" height="1350" role="img" aria-label="Year in Review card"></canvas></div>
+    <div class="actions">
+      <button class="btn primary" type="button" id="download">Download image</button>
+      <button class="btn hidden" type="button" id="share">Share</button>
+      <button class="btn" type="button" id="again">Other wallets</button>
+    </div>
+    <div class="panel facts">
+      <h2>What the card counts</h2>
+      <p class="story" id="factStory"></p>
+      <dl id="factList"></dl>
+      <div class="capped hidden" id="cappedNote">A wallet had more history than the page reads (1,500 transactions or transfers per list), so counts marked + are lower bounds.</div>
+    </div>
+  </section>
+
+  <div class="foot">
+    <p><b>What is read.</b> Transactions your wallets sent this year and token transfers in or out, from the public PulseChain explorers (FusionScan, then PulseScan); balances and HEX stakes on 1 January and now, from public PulseChain RPC nodes; today's prices from DexScreener. Both ends are valued at today's prices, so the stack change shows what you did, not how prices moved.</p>
+    <p><b>Nothing is stored or sent anywhere else.</b> The page runs in your browser and only asks those public services. No account, no tracking, no server of ours involved.</p>
+    <p><b>Not counted in this web version:</b> Ethereum (PulseChain only), the value of LP positions in the stack (new positions and liquidity adds are still counted), and .pls names (paste the 0x address). Coins with less than $1,000 of DEX liquidity are treated as spam.</p>
+    <p>The full Year in Review, with the video version, is in <a href="https://apps.apple.com/app/id1622965914" rel="noopener">Ching Ching for iPhone</a>.</p>
+  </div>
+</div>
+
+<script src="year-core.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
