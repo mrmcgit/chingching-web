@@ -1,0 +1,34 @@
+# Ching Ching
+
+> Ching Ching (on the App Store as "Ching Ching Portfolio") is a free portfolio
+> tracker for PulseChain and Ethereum wallets on iPhone, iPad and Apple Watch,
+> on the App Store since 2022. Add wallets by address, ENS name or .pls name to
+> see token holdings with live prices, HEX stakes with T-Share details, NFTs,
+> liquidity pool positions, chain stats and gas prices, plus home screen
+> widgets. Completely free, with no subscription. No accounts or sign-ups:
+> wallet addresses and settings stay on the device, and the app has no
+> analytics, crash reporting or advertising SDKs. It reads public blockchain
+> data, and a few requests go to small servers run for the app, as the privacy
+> policy describes. chingching.xyz also has a read-only web portfolio viewer, an
+> LP Yield page for claimable V3 LP fees, and free browser games in the Arcade.
+> Ching Ching shows data only: it gives no financial advice and makes no price
+> predictions.
+
+## Key pages
+- Web portfolio viewer (any PulseChain or Ethereum wallet, read-only): https://chingching.xyz/
+- About the app and its features: https://chingching.xyz/about/
+- Support and contact: https://chingching.xyz/support/
+- Privacy policy: https://chingching.xyz/privacy/
+- Arcade (free browser games): https://chingching.xyz/arcade/
+- Around the Block (run the city streets): https://chingching.xyz/around-the-block/
+- In Too Deep (swim the real PLS chart): https://chingching.xyz/in-too-deep/
+- Moonshot (fly the real PLS chart): https://chingching.xyz/moonshot/
+- PulseChain Oceanomics: https://chingching.xyz/oceanomics/
+- Pulse Cannon (defend the tokens): https://chingching.xyz/pulse-cannon/
+- Pump & Jump (ride the real PLS chart): https://chingching.xyz/pump-and-jump/
+- LP Yield (claimable V3 LP fees on PulseChain and Ethereum): https://chingching.xyz/yield/
+- App Store: https://apps.apple.com/app/ching-ching/id1622965914
+
+## Contact
+- support@chingching.xyz
+- X: https://x.com/chingchingpulse

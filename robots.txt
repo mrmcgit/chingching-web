@@ -1,4 +1,6 @@
+# Everyone, including AI crawlers, may read this site.
 User-agent: *
+Content-Signal: search=yes, ai-input=yes, ai-train=yes
 Allow: /
 # Not pages: PulseScan API paths Googlebot lifts from the home page script.
 Disallow: /api/

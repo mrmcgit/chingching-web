@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://chingching.xyz/</loc></url>
-  <url><loc>https://chingching.xyz/arcade/</loc></url>
-  <url><loc>https://chingching.xyz/around-the-block/</loc></url>
-  <url><loc>https://chingching.xyz/in-too-deep/</loc></url>
-  <url><loc>https://chingching.xyz/moonshot/</loc></url>
-  <url><loc>https://chingching.xyz/pulse-cannon/</loc></url>
-  <url><loc>https://chingching.xyz/pump-and-jump/</loc></url>
-  <url><loc>https://chingching.xyz/oceanomics/</loc></url>
-  <url><loc>https://chingching.xyz/yield/</loc></url>
-  <url><loc>https://chingching.xyz/about/</loc></url>
-  <url><loc>https://chingching.xyz/support/</loc></url>
-  <url><loc>https://chingching.xyz/privacy/</loc></url>
+  <url><loc>https://chingching.xyz/</loc><lastmod>2026-11-20</lastmod></url>
+  <url><loc>https://chingching.xyz/about/</loc><lastmod>2026-11-15</lastmod></url>
+  <url><loc>https://chingching.xyz/support/</loc><lastmod>2026-11-15</lastmod></url>
+  <url><loc>https://chingching.xyz/privacy/</loc><lastmod>2026-11-26</lastmod></url>
+  <url><loc>https://chingching.xyz/arcade/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/around-the-block/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/in-too-deep/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/moonshot/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/oceanomics/</loc><lastmod>2026-10-25</lastmod></url>
+  <url><loc>https://chingching.xyz/pulse-cannon/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/pump-and-jump/</loc><lastmod>2026-10-05</lastmod></url>
+  <url><loc>https://chingching.xyz/yield/</loc><lastmod>2026-11-20</lastmod></url>
 </urlset>
