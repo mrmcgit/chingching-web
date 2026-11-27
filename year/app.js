@@ -99,7 +99,8 @@
     for (const c of r.stacks.slice(0, 5)) {
       rows.push([`${c.symbol} stack`, c.changePercent != null ? ch(c.changePercent) : (c.end > 0 ? 'New' : '–')]);
     }
-    rows.push(['Transactions', n(r.transactions)]);
+    // Read from the wallets' nonces when a list was cut short, so no + then.
+    rows.push(['Transactions', r.transactionsExact ? new Intl.NumberFormat('en').format(r.transactions) : n(r.transactions)]);
     rows.push(['Active days', n(r.activeDays)]);
     const busiest = r.monthly.indexOf(Math.max(...r.monthly));
     if (r.transactions > 0) rows.push(['Busiest month', new Intl.DateTimeFormat('en', { month: 'long' }).format(new Date(r.year, busiest, 1))]);
@@ -108,6 +109,11 @@
     if (r.topBuyMonths >= 2) rows.push([`Months buying ${r.topBuySymbol}`, `${r.topBuyMonths}/${r.monthsElapsed}`]);
     rows.push(['New HEX stakes', n(r.stakesStarted)]);
     rows.push(['HEX stakes ended', n(r.stakesEnded)]);
+    for (const sl of r.stakeLengths || []) {
+      const avg = (v, c) => `${Y.inDays(v)} (${new Intl.NumberFormat('en').format(c)} ${c === 1 ? 'stake' : 'stakes'})`;
+      if (sl.newAverage != null) rows.push([`Avg new ${sl.symbol} stake`, avg(sl.newAverage, sl.newCount)]);
+      if (sl.activeAverage != null) rows.push([`Avg ${sl.symbol} stake, all active`, avg(sl.activeAverage, sl.activeCount)]);
+    }
     rows.push(['New LP positions', n(r.newLPPositions)]);
     rows.push(['Times you added liquidity', n(r.liquidityAdds)]);
     if (r.walletCount > 1) rows.push(['Wallets', String(r.walletCount)]);
@@ -118,6 +124,14 @@
       const dd = document.createElement('dd'); dd.textContent = v;
       dl.append(dt, dd);
     }
+    // Why counts are marked +: the page limit, an explorer page that failed, or both.
+    const notes = [];
+    if (r.limited) notes.push('A wallet had more history than the page reads (1,500 transactions or transfers per list).');
+    if (r.readFailed) notes.push('An explorer page didn\'t load, so some history wasn\'t read; trying again may fill it in.');
+    notes.push(r.sentFromNonce && r.transactionsExact
+      ? 'Transactions and the busiest month come from the wallet\'s own transaction count, so they are exact; other counts marked + are lower bounds.'
+      : 'Counts marked + are lower bounds.');
+    $('cappedNote').textContent = notes.join(' ');
     $('cappedNote').classList.toggle('hidden', !r.capped);
   }
 

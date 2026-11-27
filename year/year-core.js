@@ -132,7 +132,9 @@
 
   /**
    * Every item of an address list (newest first) from `since` on, up to
-   * pageLimit pages. Returns { items, capped }. `onPage(oldestDate)` after each
+   * pageLimit pages. Returns { items, capped, failed }: capped when the list
+   * was cut short, failed when that was a later page failing on every
+   * explorer rather than the page limit. `onPage(oldestDate)` after each
    * page. Throws only if the very first page fails on every explorer.
    */
   async function fetchYear(kind, query, address, since, onPage) {
@@ -146,7 +148,7 @@
         if (!json || !Array.isArray(json.items)) throw new Error('bad page');
       } catch (e) {
         if (page === 0) throw new Error(`Could not read ${kind} for ${short(address)}: ${e.message || e}`);
-        return { items, capped: true };
+        return { items, capped: true, failed: true };
       }
       let reachedStart = false, oldest = null;
       for (const item of json.items) {
@@ -158,11 +160,11 @@
       }
       if (oldest && onPage) onPage(oldest);
       const next = json.next_page_params;
-      if (reachedStart || !next || typeof next !== 'object' || !Object.keys(next).length) return { items, capped: false };
+      if (reachedStart || !next || typeof next !== 'object' || !Object.keys(next).length) return { items, capped: false, failed: false };
       paging = {};
       for (const [k, v] of Object.entries(next)) if (!(k in query)) paging[k] = String(v);
     }
-    return { items, capped: true };
+    return { items, capped: true, failed: false };
   }
 
   /** ERC-20s the wallet holds now: { address: { decimals, symbol } }. */
@@ -299,6 +301,22 @@
     return out;
   }
 
+  /** HEX's longest stake. */
+  const MAX_STAKE_DAYS = 5555;
+
+  /**
+   * The stake length from a stakeStart call's input: HEX's
+   * stakeStart(newStakedHearts, newStakedDays) and Hedron's
+   * hexStakeStart(amount, length) both carry it in the second word.
+   * 0 when the input is missing or out of range.
+   */
+  function stakeDaysOf(input) {
+    const h = typeof input === 'string' ? strip(input) : '';
+    if (h.length < 8 + 128) return 0;
+    const d = parseInt(h.slice(8 + 64, 8 + 128), 16);
+    return Number.isFinite(d) && d >= 1 && d <= MAX_STAKE_DAYS ? d : 0;
+  }
+
   /** Many reads at one block, multicallChunk per eth_call. null when any chunk failed everywhere. */
   async function multiRead(calls, tag) {
     const out = [];
@@ -338,16 +356,50 @@
     h.nativeStart = then ? wordAt(then[i], 0) : 0; h.nativeEnd = now ? wordAt(now[i], 0) : 0; i++;
     const countThen = then ? wordAt(then[i], 0) : 0, countNow = now ? wordAt(now[i], 0) : 0;
 
-    // One stakeLists(address, i) per stake; stakedHearts is word 1 (8 decimals).
+    // One stakeLists(address, i) per stake: stakedHearts is word 1 (8
+    // decimals), stakedDays word 4. Returns { hearts, lengths }.
     async function staked(count, tag) {
-      if (!count) return 0;
+      if (!count) return { hearts: 0, lengths: [] };
       const list = [];
       for (let j = 0; j < Math.min(count, 500); j++) list.push([CFG.hex, SEL.stakeLists + pad + word(j)]);
       const res = await multiRead(list, tag);
-      return (res || []).reduce((sum, r) => sum + (r && strip(r).length >= 128 ? wordAt(r, 1) / 1e8 : 0), 0);
+      let hearts = 0;
+      const lengths = [];
+      for (const r of res || []) {
+        if (!r || strip(r).length < 320) continue;
+        hearts += wordAt(r, 1) / 1e8;
+        const d = wordAt(r, 4);
+        if (d >= 1 && d <= MAX_STAKE_DAYS) lengths.push(d);
+      }
+      return { hearts, lengths };
     }
-    [h.stakedEnd, h.stakedStart] = await Promise.all([staked(countNow, endTag), startTag ? staked(countThen, startTag) : 0]);
+    const [endStakes, startStakes] = await Promise.all([staked(countNow, endTag), startTag ? staked(countThen, startTag) : { hearts: 0, lengths: [] }]);
+    h.stakedEnd = endStakes.hearts;
+    h.stakedStart = startStakes.hearts;
+    h.activeStakeDays = endStakes.lengths;
     return h;
+  }
+
+  /**
+   * Transactions the wallet sent in each month so far, from its nonce (the
+   * count of transactions it has ever sent) at each month's edge. `edges` are
+   * block tags: the last block before each month starts, then the period's
+   * end. Exact however busy the wallet is, and failed transactions count too,
+   * since they use a nonce. null when any read fails or the numbers don't add up.
+   */
+  async function sentPerMonth(address, edges) {
+    let nonces;
+    try {
+      nonces = await Promise.all(edges.map((tag) => rpcRace('eth_getTransactionCount', [address, tag])));
+    } catch (_) { return null; }
+    const n = nonces.map((h) => (typeof h === 'string' && /^0x[0-9a-f]+$/i.test(h) ? parseInt(h, 16) : NaN));
+    const out = [];
+    for (let i = 1; i < n.length; i++) {
+      const d = n[i] - n[i - 1];
+      if (!Number.isFinite(d) || d < 0) return null;
+      out.push(d);
+    }
+    return out;
   }
 
   /** decimals() for tokens nobody told us about. */
@@ -360,6 +412,9 @@
   }
 
   // ---------- the rollup ----------
+  /** Transactions in a year that make a wallet with no other story "Always On". */
+  const BUSY_TRANSACTIONS = 1000;
+
   function storyOf(r) {
     if (r.transactions === 0) return 'heldSteady';
     if (isSteadyBuyer(r)) return 'steadyBuyer';
@@ -377,6 +432,9 @@
     } else if (startedFromZero(r)) {
       return 'stacker';
     }
+    // Hundreds of sends and none of the above: a bot, usually. A sent list
+    // cut short with no nonce to stand in already means 1,500 or more.
+    if (r.transactions >= BUSY_TRANSACTIONS || r.transactionsExact === false) return 'busy';
     return 'holder';
   }
 
@@ -434,6 +492,23 @@
 
     // Activity
     let txCount = 0, swaps = 0, cashOuts = 0, stakesStarted = 0, stakesEnded = 0, newLP = 0, lpAdds = 0, capped = false;
+    // Why a list was cut short: the page limit, or an explorer page that failed.
+    let limited = false, readFailed = false;
+    // Stake lengths in days: stakes started this year (from the stakeStart
+    // input, so ones already ended count too) and every stake still running.
+    const newStakes = { count: 0, days: 0 }, activeStakes = { count: 0, days: 0 };
+    // False once a wallet's sent list was cut short and its nonce couldn't stand in.
+    let txExact = true;
+    // True once a wallet's nonce stood in: its active days are then far short.
+    let sentFromNonce = false;
+    // Block tags at the month edges, found once, the first time a wallet needs them.
+    let edgesPromise = null;
+    const monthEdges = () => edgesPromise || (edgesPromise = (async () => {
+      const starts = [startBlock];
+      for (let m = 1; m < monthsElapsed; m++) starts.push(await firstBlock(new Date(year, m, 1)));
+      if (starts.some((b) => !b)) return null;
+      return [...starts.map((b) => toTag(b - 1)), endBlock ? toTag(endBlock) : 'latest'];
+    })());
     const days = new Set();
     const monthly = new Array(12).fill(0);
     const buyMonths = {};
@@ -459,6 +534,8 @@
       const lg = await fetchYear('token-transfers', {}, address, yearStart, (d) => paged(name, d));
       step();
       capped = capped || tx.capped || lg.capped;
+      readFailed = readFailed || tx.failed || lg.failed;
+      limited = limited || (tx.capped && !tx.failed) || (lg.capped && !lg.failed);
 
       const txs = [];
       for (const item of tx.items) {
@@ -468,6 +545,7 @@
         txs.push({
           hash: item.hash.toLowerCase(), date, method: String(item.method || '').toLowerCase(),
           to: ((item.to && item.to.hash) || '').toLowerCase(), sentNative: value !== '0' && value !== '',
+          input: typeof item.raw_input === 'string' ? item.raw_input : '',
         });
       }
       const legs = [];
@@ -507,13 +585,32 @@
       // 1 January balance to tell a new position from a top-up.
       const mintedPairs = new Set();
 
+      // A wallet with more sent transactions than the page reads (a bot,
+      // usually) gets its count and months from its nonce instead.
+      let sent = null;
+      if (tx.capped) {
+        detail = `${name}: counting transactions`;
+        report(0);
+        const edges = await monthEdges();
+        sent = edges ? await sentPerMonth(address, edges) : null;
+        if (!sent) txExact = false;
+        else sentFromNonce = true;
+      }
+      if (sent) {
+        sent.forEach((c, m) => { monthly[m] += c; txCount += c; });
+      }
+
       for (const t of txs) {
-        txCount++;
         days.add(dayKey(t.date));
         const month = t.date.getMonth();
-        monthly[month]++;
+        if (!sent) { txCount++; monthly[month]++; }
 
-        if (t.method.includes('stakestart')) { stakesStarted++; continue; }
+        if (t.method.includes('stakestart')) {
+          stakesStarted++;
+          const d = stakeDaysOf(t.input);
+          if (d) { newStakes.count++; newStakes.days += d; }
+          continue;
+        }
         if (t.method.includes('stakeend')) { stakesEnded++; continue; }
 
         const txLegs = legsByTx[t.hash] || [];
@@ -590,6 +687,7 @@
       step();
       if (snap.startOK) startKnown = true;
       if (snap.endOK) endKnown = true;
+      for (const d of snap.activeStakeDays) { activeStakes.count++; activeStakes.days += d; }
 
       // Liquid coins. Spam rules only (dust, thin pools, the bad-data cap).
       for (const t of tokens) {
@@ -651,7 +749,15 @@
       transactions: txCount, activeDays: days.size, monthly, swaps, cashOuts,
       topBuySymbol: top ? top[0] : null, topBuyMonths: top ? top[1].size : 0,
       topBuySold: top ? soldSymbols.has(top[0]) : false,
-      stakesStarted, stakesEnded, newLPPositions: newLP, liquidityAdds: lpAdds, capped,
+      stakesStarted, stakesEnded, newLPPositions: newLP, liquidityAdds: lpAdds, capped, limited, readFailed,
+      // Average stake length per chain, days; the app splits PulseChain and Ethereum.
+      stakeLengths: (newStakes.count || activeStakes.count) ? [{
+        symbol: 'HEX',
+        newCount: newStakes.count, newAverage: newStakes.count ? Math.round(newStakes.days / newStakes.count) : null,
+        activeCount: activeStakes.count, activeAverage: activeStakes.count ? Math.round(activeStakes.days / activeStakes.count) : null,
+      }] : [],
+      // Transactions and monthly are exact even when capped (read from nonces).
+      transactionsExact: txExact, sentFromNonce,
       startBlock, endBlock,
     };
     r.stackChangePercent = stackChangePercent(r);
@@ -673,10 +779,13 @@
   /** A change in percent, or as a multiple once it passes +300%. */
   function change(v) { return v >= 300 ? multiple(1 + v / 100) : percent(v); }
   const count = (n) => new Intl.NumberFormat('en').format(n);
+  const inDays = (n) => `${count(n)} ${n === 1 ? 'day' : 'days'}`;
 
   /** Every string the card shows. Percentages and counts only. */
   function text(r) {
     const plus = r.capped ? '+' : '';
+    // Transactions stay exact when a nonce stood in for a cut-short list.
+    const txPlus = r.capped && !r.transactionsExact ? '+' : '';
     const topBuy = r.topBuySymbol || '';
     const t = { year: String(r.year), title: 'Year in Review' };
     const dateFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
@@ -699,6 +808,7 @@
         t.storyLine = r.cashOuts === 0 ? 'Grew your stack without cashing out' : 'Grew your stack';
         break;
       case 'tookProfits': t.storyTitle = 'Took Profits'; t.storyLine = `Times you cashed out: ${r.cashOuts}`; break;
+      case 'busy': t.storyTitle = 'Always On'; t.storyLine = `Transactions this year: ${count(r.transactions)}${txPlus}`; break;
       default: t.storyTitle = 'Holder'; t.storyLine = 'Kept your stack through the year';
     }
 
@@ -715,6 +825,14 @@
     } else if (r.stakesEnded > 0 && r.stakesStarted === 0) {
       stats.push({ label: 'HEX stakes ended', value: count(r.stakesEnded), note: null });
     }
+    for (const s of r.stakeLengths || []) {
+      if (s.newAverage != null) {
+        const sameSet = s.activeAverage == null || (s.activeCount === s.newCount && s.activeAverage === s.newAverage);
+        stats.push({ label: `Avg new ${s.symbol} stake`, value: inDays(s.newAverage), note: sameSet ? null : `All active: ${inDays(s.activeAverage)}` });
+      } else if (s.activeAverage != null) {
+        stats.push({ label: `Avg ${s.symbol} stake`, value: inDays(s.activeAverage), note: null });
+      }
+    }
     if (r.newLPPositions > 0 && r.story !== 'liquidity') stats.push({ label: 'New LP positions', value: count(r.newLPPositions), note: null });
     if (r.topBuyMonths >= 2 && r.story !== 'steadyBuyer') stats.push({ label: `Months buying ${topBuy}`, value: `${r.topBuyMonths}/${r.monthsElapsed}`, note: null });
     if (r.swaps > 0 && r.story !== 'trader') stats.push({ label: 'Swaps', value: count(r.swaps) + plus, note: null });
@@ -727,7 +845,13 @@
       else continue;
       stats.push({ label: `${coin.symbol} stack`, value, note: null });
     }
-    if (r.activeDays > 0) stats.push({ label: 'Active days', value: count(r.activeDays) + plus, note: null });
+    // A nonce count says how many, not on which days: active days would be
+    // a small fraction of the truth, so the exact count goes on the card.
+    if (r.sentFromNonce) {
+      if (r.story !== 'busy') stats.push({ label: 'Transactions', value: count(r.transactions) + txPlus, note: null });
+    } else if (r.activeDays > 0) {
+      stats.push({ label: 'Active days', value: count(r.activeDays) + plus, note: null });
+    }
     t.stats = stats;
     t.monthly = r.monthly;
     t.monthsElapsed = r.monthsElapsed;
@@ -737,7 +861,7 @@
     return t;
   }
 
-  const api = { CFG, reviewYear, build, text, percent, multiple, change, isAddress, short, encAggregate3, decAggregate3, parseDate };
+  const api = { stakeDaysOf, inDays, CFG, reviewYear, build, text, percent, multiple, change, isAddress, short, encAggregate3, decAggregate3, parseDate };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.YearCore = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
